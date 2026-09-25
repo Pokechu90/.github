@@ -1,0 +1,20 @@
+{
+  "name": "FoundryBreach",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "FoundryShared": { "$path": "src/shared" }
+    },
+    "ServerScriptService": {
+      "FoundryServer": { "$path": "src/server" }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "FoundryClient": { "$path": "src/client" }
+      },
+      "StarterCharacterScripts": {
+        "$path": "src/character"
+      }
+    }
+  }
+}
