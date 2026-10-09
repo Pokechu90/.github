@@ -379,18 +379,21 @@ function onEnemyKilled(e, info) {
   questEvent('kill', 1, { weapon });
   if (info.source === 'explosion' || info.source === 'airstrike') { profile.stats.explosiveKills++; questEvent('explosiveKill'); }
   run.multi = run.multiT > 0 ? run.multi + 1 : 1; run.multiT = 1.6;
+  run.combo++; run.comboT = COMBO_WINDOW; run.bestCombo = Math.max(run.bestCombo, run.combo);
+  questEvent('killType', 1, { type: e.kind }); questEvent('combo', run.combo);
+  if (head && !reduceMotion) hitStop = Math.max(hitStop, 0.045);
   // killstreak rewards
   run.killstreak++;
   if (run.killstreak === 10) { run.airstrikes++; ui.toast('Airstrike ready', 'Press Z to mark a target', 'drop'); SFX.powerup(); questEvent('airstrike'); }
   if (run.killstreak >= 20) { run.turrets++; run.killstreak = 0; ui.toast('Auto-turret ready', 'Press X to deploy it', 'drop'); SFX.powerup(); }
-  const mult = 1 + Math.min(run.multi - 1, 4) * 0.25;
+  const rm = roundMults();
   if (k) {
     let coins = k.coins + (head ? 5 : 0) + (run.multi >= 2 ? 5 * Math.min(run.multi - 1, 4) : 0);
-    const got = addCoins(coins, p);
+    const got = addCoins(coins * rm.coins, p);
     spawnCoinBurst(p, Math.ceil(got / 5));
     damageNumber(tv.copy(p).setY(p.y + 0.6), `+${got}`, 'coin');
-    addXp(k.xp + (head ? 10 : 0));
-    run.score += Math.round((k.score + (head ? 50 : 0)) * mult);
+    addXp((k.xp + (head ? 10 : 0)) * rm.xp);
+    run.score += Math.round((k.score + (head ? 50 : 0)) * rm.total);
   }
   if (run.multi >= 2) ui.streak(['', '', 'Double kill', 'Triple kill', 'Quad kill'][run.multi] || 'Rampage');
   ui.killfeed(weaponShortName(weapon), e.isBoss ? e.name : `${k.name}-${String(e.id % 100).padStart(2, '0')}`, head);
@@ -415,11 +418,13 @@ function rollRareDrop() {
 }
 function onBossKilled(b) {
   const p = b.center(new V3());
-  const coins = addCoins(400 + 100 * run.wave, p);
+  const rm = roundMults();
+  const coins = addCoins((400 + 100 * run.wave) * rm.coins, p);
+  if (!reduceMotion) hitStop = 0.35;
   spawnCoinBurst(p, 12);
   damageNumber(tv.copy(p).setY(p.y + 2), `+${coins}`, 'coin');
   addXp(600 + 150 * b.cycle);
-  run.score += 2500 + 500 * b.cycle;
+  run.score += Math.round((2500 + 500 * b.cycle) * rm.total);
   profile.stats.bosses++;
   questEvent('boss');
   if (!b.tookDamage) questEvent('bossFlawless');
@@ -498,3 +503,20 @@ function updateTurrets(dt) {
   }
 }
 function clearTurrets() { turrets.forEach(t => scene.remove(t.g)); turrets.length = 0; }
+
+// ---------------- delayed blasts (Volatile mutator) ----------------
+const delayed = [];
+function delayedBlast(p, t, radius, dmg) {
+  const ring = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2), new THREE.MeshBasicMaterial({ map: ringTex, color: 0xffa020, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  ring.rotation.x = -Math.PI / 2; ring.position.set(p.x, groundAt(p.x, p.z, p.y) + 0.06, p.z); scene.add(ring);
+  delayed.push({ p, t, t0: t, radius, dmg, ring });
+}
+function updateDelayed(dt) {
+  for (let i = delayed.length - 1; i >= 0; i--) {
+    const d = delayed[i]; d.t -= dt;
+    d.ring.material.opacity = 0.4 + Math.sin(d.t * 30) * 0.4; d.ring.scale.setScalar(0.5 + 0.5 * (1 - d.t / d.t0));
+    if (Math.random() < 0.4) sparks(d.p, 2, null, 3, COL.amber, COL.fireEnd);
+    if (d.t <= 0) { scene.remove(d.ring); delayed.splice(i, 1); explosion(d.p, d.radius, d.dmg, { owner: 'enemy', color: 0xffa020, silentDecal: true }); }
+  }
+}
+function clearDelayed() { delayed.forEach(d => scene.remove(d.ring)); delayed.length = 0; }

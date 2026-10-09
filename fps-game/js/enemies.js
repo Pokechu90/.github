@@ -13,9 +13,11 @@ const ENEMY_TYPES = {
 const enemies = [];
 let enemyId = 0;
 function waveScale(w) {
-  const d = DIFFICULTY[run.diff];
-  return { hp: (1 + 0.09 * (w - 1)) * d.hp, speed: Math.min(1.35, 1 + 0.015 * (w - 1)) * d.speed, dmg: (1 + 0.035 * (w - 1)) * d.dmg };
+  const d = DIFFICULTY[run.diff], mu = (run.mutator && MUTATORS[run.mutator]) || {};
+  return { hp: (1 + 0.09 * (w - 1)) * d.hp * (mu.hp || 1), speed: Math.min(1.35, 1 + 0.015 * (w - 1)) * d.speed * (mu.speed || 1), dmg: (1 + 0.035 * (w - 1)) * d.dmg * (mu.dmg || 1) };
 }
+// only bigger parts cast shadows: cuts shadow-pass draw calls about fourfold
+function meshVolume(o) { const g = o.geometry; if (!g.boundingBox) g.computeBoundingBox(); const s = g.boundingBox.getSize(tv4); return s.x * s.y * s.z; }
 function playerAim(out, lead = 0) {
   out.copy(player.pos).setY(player.pos.y + eyeHeight() - 0.35);
   if (lead) out.addScaledVector(player.vel, lead);
@@ -84,7 +86,7 @@ function buildBot(kind, k) {
       extra.shield = sh;
     }
   }
-  g.traverse(o => { if (o.isMesh && o.material !== energyMat) o.castShadow = true; });
+  g.traverse(o => { if (o.isMesh) o.castShadow = o.material !== energyMat && meshVolume(o) > 0.015; });
   return Object.assign({ g, root, hips, torso, head, legs, arms: armsA, hit, body, glow, gunTip, tipMat }, extra);
 }
 
@@ -105,6 +107,7 @@ function buildDrone(k) {
   const tipMat = new THREE.MeshBasicMaterial({ color: k.glow, transparent: true, opacity: 0.3 });
   add(new THREE.BoxGeometry(0.08, 0.08, 0.3), botDark, 0, -0.16, 0.1);
   const gunTip = add(new THREE.SphereGeometry(0.05, 8, 6), tipMat, 0, -0.16, 0.28);
+  g.traverse(o => { if (o.isMesh) o.castShadow = o.userData.part === 'torso'; });
   return { g, hit, body, glow, gunTip, tipMat, rotors, eye };
 }
 
@@ -123,7 +126,7 @@ class Enemy {
     if (this.flying) { this.pos.y = groundAt(p.x, p.z) + 5; this.alt = rand(4, 6.5); this.orbit = Math.random() < 0.5 ? 1 : -1; this.orbitT = rand(2, 4); }
     this.fireT = rand(1.2, 2.6); this.losT = 0; this.los = false; this.strafe = Math.random() < .5 ? 1 : -1; this.strafeT = rand(1, 3);
     this.stuckT = 0; this.wanderT = 0; this.wander = new V3(); this.phase = Math.random() * 6; this.spawnT = 0; this.flashT = 0; this.meleeT = 0.8; this.burst = 0; this.burstT = 0; this.yaw = 0; this.charged = false; this.swing = 0; this.kick = 0; this.stunT = 0;
-    this.armT = -1; this.beepT = 0; this.aimT = 0; this.dead = false; this.lastDir = new V3(0, 0, 1);
+    this.armT = -1; this.beepT = 0; this.aimT = 0; this.dead = false; this.react = 0; this.lastDir = new V3(0, 0, 1);
     this.mapColor = this.k.map; this.mapSize = kind === 'tank' ? 2 : 1.4;
     if (kind === 'sniper') { this.beam = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 1), new THREE.MeshBasicMaterial({ color: 0xff2a4a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(this.beam); }
     for (let i = 0; i < 40; i++) { tv.set(rand(-.3, .3), rand(0, 1), rand(-.3, .3)); FX.spawn(tv2.copy(p).add(tv).setY(p.y + rand(0, 3)), tv.set(0, rand(2, 6), 0), rand(.3, .8), .18, .02, COL.elec, COL.elecEnd, {}); }
@@ -187,6 +190,8 @@ class Enemy {
     if (this.kind === 'runner') { m.torso.rotation.x = 0.35; this.swing = Math.max(0, this.swing - dt * 4); m.arms[0].rotation.x = -sw * 1.2 - this.swing * 2.2; m.arms[1].rotation.x = sw * 1.2 - this.swing * 2.2; }
     else if (this.kind === 'exploder') { m.torso.rotation.x = 0.25; m.arms[0].rotation.x = -sw; m.arms[1].rotation.x = sw; }
     else if (m.gunTip) { const aimP = Math.atan2((player.pos.y + 1.3) - (b.pos.y + b.height * 0.75), dist); m.arms[1].rotation.x = -1.35 - (this.los ? aimP : 0) + this.kick; this.kick = Math.max(0, this.kick - dt * 3); }
+    this.react = Math.max(0, this.react - dt * 5);
+    m.torso.rotation.x = (this.kind === 'runner' ? 0.35 : this.kind === 'exploder' ? 0.25 : 0) - this.react * 0.45; m.head.rotation.x = -this.react * 0.35; m.torso.rotation.z = this.react * 0.12 * (this.id % 2 ? 1 : -1);
     if (!player.alive || this.spawnT < 1) return;
     if (this.kind === 'runner') {
       this.meleeT -= dt;
@@ -267,6 +272,7 @@ class Enemy {
     const face = Math.atan2(dx, dz); let dy = face - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); this.yaw += dy * Math.min(1, dt * 6);
     m.g.rotation.set(this.body.vel.z * 0.03, this.yaw, -this.body.vel.x * 0.03);
     m.rotors.forEach((r, i) => r.rotation.y += dt * (30 + i));
+    if (this.react > 0) { this.react = Math.max(0, this.react - dt * 5); m.g.rotation.x += this.react * 0.7; m.g.rotation.z += this.react * 0.4; }
     if (!player.alive || this.spawnT < 1) return;
     if (this.los && dist < 45) {
       this.fireT -= dt;
@@ -306,6 +312,10 @@ class Enemy {
     if (info.part === 'shield') { SFX.blocked(info.point); sparks(info.point, 6, info.normal || null, 5, COL.elec, COL.elecEnd); return { dealt: 0, killed: false, blocked: true }; }
     const dealt = Math.min(this.hp, amount);
     this.hp -= amount; this.flashT = 0.07; this.fireT += 0.05;
+    // hit reaction: flinch and a little knockback scaled by the hit's share of max health
+    this.react = Math.min(1, this.react + 0.3 + amount / this.hpMax * 1.5);
+    if (info.dir && this.body && !this.flying) { const k = Math.min(4, amount * 0.05); this.body.vel.x += info.dir.x * k; this.body.vel.z += info.dir.z * k; }
+    else if (info.dir && this.flying) this.body.vel.addScaledVector(info.dir, Math.min(5, amount * 0.08));
     if (this.kind === 'grunt' && Math.random() < 0.3) this.strafe *= -1;
     if (this.kind === 'exploder' && info.part === 'weak' && this.hp > 0) { this.hp = 0; }
     if (this.hp <= 0) { this.die(info); return { dealt, killed: true }; }
@@ -327,7 +337,9 @@ class Enemy {
       if (o.material === energyMat || ((pr.width || 1) < 0.1 && (pr.height || 1) < 0.1)) { o.parent.remove(o); continue; }
       scene.attach(o);
       const v = new V3(rand(-2, 2), rand(2.5, 6), rand(-2, 2)).addScaledVector(dir, rand(3, 7));
-      debris.push({ m: o, v, w: new V3(rand(-8, 8), rand(-8, 8), rand(-8, 8)), t: rand(3, 4.5), spark: o === this.m.torso || o === this.m.head || o === this.m.eye });
+      const popHead = (o === this.m.head || o === this.m.eye) && info.part === 'head';
+      if (popHead) { v.set(rand(-1, 1), rand(8, 11), rand(-1, 1)).addScaledVector(dir, 2.5); for (let i = 0; i < 24; i++) FX.spawn(o.getWorldPosition(tv3), tv2.set(rand(-1.5, 1.5), rand(3, 8), rand(-1.5, 1.5)), rand(0.3, 0.7), 0.12, 0.02, COL.elec, COL.elecEnd, { grav: 12 }); }
+      debris.push({ m: o, v, w: popHead ? new V3(rand(-20, 20), rand(-20, 20), rand(-20, 20)) : new V3(rand(-8, 8), rand(-8, 8), rand(-8, 8)), t: rand(3, 4.5), spark: o === this.m.torso || o === this.m.head || o === this.m.eye });
     }
     scene.remove(this.m.g);
     sparks(p, 30, null, 9, COL.elec, COL.elecEnd); sparks(p, 20, null, 6); puff(p, 8, null, COL.smoke, 0.8, 1.6);
@@ -336,6 +348,7 @@ class Enemy {
       explosion(p, 5, this.k.dmg * this.dmgMul, { hurtsPlayer: true, owner: src === 'self' || !src ? 'enemy' : 'player', enemyDamage: this.selfDestruct ? 30 : 60, color: 0xffe030 });
     }
     if (this.kind === 'tank') explosion(p, 3.5, 20, { hurtsPlayer: true, owner: 'player', enemyDamage: 40 });
+    if (run.mutator === 'volatile' && this.kind !== 'exploder' && !this.selfDestruct) delayedBlast(p.clone(), 0.8, 2.8, 14 * this.dmgMul);
     if (!this.selfDestruct) onEnemyKilled(this, info);
   }
 }

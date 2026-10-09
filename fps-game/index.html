@@ -229,7 +229,28 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
 #coinNum{font-family:var(--display);font-size:18px;color:var(--coin);margin-top:4px;display:flex;align-items:center}
 #coinPop{margin-left:8px;font-size:12px;color:var(--coin);opacity:0;transition:opacity .3s}
 #mult{color:var(--accent);font-size:11px;letter-spacing:.14em;height:14px;margin-top:2px}
-#toasts{position:absolute;left:24px;top:150px;display:flex;flex-direction:column;gap:6px;width:300px}
+#rmult{display:flex;align-items:baseline;gap:8px;margin-top:6px;padding-top:6px;border-top:1px solid var(--line)}
+#rmTotal{font-family:var(--display);font-weight:800;font-size:22px;color:var(--accent);line-height:1;transition:transform .15s}
+#rmTotal.bump{transform:scale(1.25)}
+#rmParts{font-size:10px;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;line-height:1.35}
+.combo{margin-top:6px;display:flex;align-items:center;gap:8px;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+.combo b{color:var(--text);font-family:var(--display);font-size:14px}
+.cbar{flex:1;height:3px;background:rgba(255,255,255,.08);position:relative}
+.cbar i{position:absolute;inset:0 auto 0 0;background:var(--accent)}
+#crosshair{--xh:#fff}
+#crosshair i{background:var(--xh)!important}
+#crosshair .ring{position:absolute;left:-9px;top:-9px;width:18px;height:18px;box-sizing:border-box;border:2px solid var(--xh);border-radius:50%;background:none!important;box-shadow:0 0 0 1px rgba(0,0,0,.45),inset 0 0 0 1px rgba(0,0,0,.45);display:none}
+#crosshair.circle .ring{display:block}
+#crosshair.circle .h,#crosshair.circle .v,#crosshair.dot .h,#crosshair.dot .v{display:none}
+#crosshair.dot .d{width:4px;height:4px;left:-2px;top:-2px;border-radius:50%}
+.board{display:flex;flex-direction:column;gap:4px;margin:6px 0 16px}
+.board .br{display:grid;grid-template-columns:24px 1fr auto auto;gap:12px;align-items:baseline;font-size:12px;color:var(--muted);padding:6px 10px;border:1px solid var(--line);font-variant-numeric:tabular-nums}
+.board .br b{font-family:var(--display);color:var(--text);font-size:14px}
+.board .br.me{border-color:var(--accent)}
+.board .empty{font-size:12px;color:var(--muted)}
+.dailies{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:16px}
+@media (max-width:900px){.dailies{grid-template-columns:1fr}}
+#toasts{position:absolute;left:24px;top:232px;display:flex;flex-direction:column;gap:6px;width:300px}
 .toast{background:var(--panel-solid);border:1px solid var(--line);border-left:3px solid var(--accent);padding:9px 12px;animation:tin .3s ease-out;transition:opacity .5s,transform .5s}
 .toast b{display:block;font-family:var(--display);font-size:14px;letter-spacing:.04em}
 .toast span{font-size:11px;color:var(--muted)}
@@ -320,14 +341,14 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
   <div id="vignette"></div><div id="hurt"></div><div id="stunFx"></div><div id="puFx"></div>
   <div id="scope"><i></i></div>
   <div id="dmgNums"></div>
-  <div id="crosshair"><i class="h" id="chL"></i><i class="h" id="chR"></i><i class="v" id="chT"></i><i class="v" id="chB"></i><i class="d"></i></div>
+  <div id="crosshair"><i class="ring"></i><i class="h" id="chL"></i><i class="h" id="chR"></i><i class="v" id="chT"></i><i class="v" id="chB"></i><i class="d"></i></div>
   <div id="hit"><b></b><i style="transform:rotate(45deg) translateX(12px)"></i><i style="transform:rotate(135deg) translateX(12px)"></i><i style="transform:rotate(225deg) translateX(12px)"></i><i style="transform:rotate(315deg) translateX(12px)"></i></div>
   <div id="dmgDirs"></div>
   <div id="banner"><div id="bannerTitle">WAVE 1</div><div id="bannerSub">Hostiles inbound</div></div>
   <div id="streak"></div>
   <div id="prompt"></div>
 
-  <div class="pnl" id="score"><div class="lbl">Score</div><b id="scoreNum">0</b><div id="coinNum"><span class="coin"></span><span id="coinVal">0</span><span id="coinPop"></span></div><div id="mult"></div></div>
+  <div class="pnl" id="score"><div class="lbl">Score</div><b id="scoreNum">0</b><div id="coinNum"><span class="coin"></span><span id="coinVal">0</span><span id="coinPop"></span></div><div id="mult"></div><div id="rmult"><b id="rmTotal">×1.0</b><span id="rmParts">Wave ×1.0</span></div><div class="combo"><span>Combo <b id="comboNum">0</b></span><div class="cbar"><i id="comboFill"></i></div></div></div>
   <div id="toasts"></div>
   <div class="pnl" id="topbar">
     <div id="waveBox"><div class="lbl">Wave</div><b id="waveNum">1</b></div>
@@ -397,6 +418,8 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
     <div class="maps" id="mapCards"></div>
     <div class="lbl">Difficulty</div>
     <div class="diff" id="diffCards"></div>
+    <div class="lbl">Your top runs here</div>
+    <div class="board" id="playBoard"></div>
     <div class="actions" style="flex-direction:row;flex-wrap:wrap">
       <button class="btn primary" id="btnDeploy">Deploy <small id="deploySub"></small></button>
       <button class="btn" id="btnPlayBack">Back</button>
@@ -420,6 +443,9 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
   <div class="sheet wide">
     <h2>Quests</h2>
     <p class="sub">Progress carries across runs. Rewards are granted the moment a quest completes.</p>
+    <div class="lbl" id="dailyLbl">Daily challenges</div>
+    <div class="dailies" id="dailyList"></div>
+    <div class="lbl">Career quests</div>
     <div class="qlist" id="questList"></div>
     <div class="actions"><button class="btn primary" id="btnQuestBack">Done</button></div>
   </div>
@@ -430,10 +456,18 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
     <h2>Settings</h2>
     <p class="sub">Saved in this browser.</p>
     <div class="field"><label for="sSens">Mouse sensitivity</label><output id="oSens"></output><input type="range" id="sSens" min="0.2" max="3" step="0.05"></div>
+    <div class="field"><label for="sAds">Aiming sensitivity</label><output id="oAds"></output><input type="range" id="sAds" min="0.4" max="1.6" step="0.05"></div>
+    <div class="field"><label for="sPad">Controller look speed</label><output id="oPad"></output><input type="range" id="sPad" min="0.4" max="2" step="0.05"></div>
+    <div class="field"><label for="sToggleAds">Toggle aim (instead of hold)</label><input type="checkbox" id="sToggleAds"></div>
+    <div class="field"><label>Crosshair</label><div class="seg" id="sXh"><button class="chip" data-xh="cross">Cross</button><button class="chip" data-xh="dot">Dot</button><button class="chip" data-xh="circle">Circle</button></div></div>
+    <div class="field"><label>Crosshair color</label><div class="seg" id="sXhColor"><button class="chip" data-c="#ffffff">White</button><button class="chip" data-c="#5dff9a">Green</button><button class="chip" data-c="#5ff2ff">Cyan</button><button class="chip" data-c="#ffe14a">Yellow</button><button class="chip" data-c="#ff5ad8">Pink</button></div></div>
+    <div class="field"><label for="sXhSize">Crosshair size</label><output id="oXhSize"></output><input type="range" id="sXhSize" min="0.6" max="1.8" step="0.1"></div>
     <div class="field"><label for="sFov">Field of view</label><output id="oFov"></output><input type="range" id="sFov" min="65" max="105" step="1"></div>
     <div class="field"><label for="sVol">Master volume</label><output id="oVol"></output><input type="range" id="sVol" min="0" max="1" step="0.05"></div>
     <div class="field"><label for="sMusic">Music volume</label><output id="oMusic"></output><input type="range" id="sMusic" min="0" max="1" step="0.05"></div>
     <div class="field"><label>Graphics quality</label><div class="seg" id="sQuality"><button class="chip" data-q="low">Low</button><button class="chip" data-q="medium">Medium</button><button class="chip" data-q="high">High</button></div></div>
+    <div class="field"><label for="sDyn">Dynamic resolution (smoother on slow GPUs)</label><input type="checkbox" id="sDyn"></div>
+    <div class="field"><label for="sFps">FPS counter</label><input type="checkbox" id="sFps"></div>
     <div class="field"><label for="sDmg">Damage numbers</label><input type="checkbox" id="sDmg"></div>
     <div class="field"><label for="sInvert">Invert mouse Y</label><input type="checkbox" id="sInvert"></div>
     <details style="border-top:1px solid var(--line);padding-top:12px">
@@ -448,6 +482,10 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
         <dt><kbd>G</kbd> <kbd>F</kbd></dt><dd>Frag grenade · stun grenade</dd>
         <dt><kbd>Z</kbd> <kbd>X</kbd></dt><dd>Call airstrike · deploy auto-turret (when earned)</dd>
         <dt><kbd>T</kbd></dt><dd>Toggle the red dot on the current gun</dd>
+        <dt><kbd>E</kbd></dt><dd>Use the mystery crate or overclock forge</dd>
+        <dt><kbd>I</kbd></dt><dd>Inspect weapon</dd>
+        <dt><kbd>Space</kbd> at a ledge</dt><dd>Mantle up</dd>
+        <dt>Controller</dt><dd>Sticks move/look · RT fire · LT aim · A jump · B slide · X reload/use · Y swap · RB/LB frag/stun · D-pad killstreaks · Start pause</dd>
         <dt><kbd>B</kbd> <kbd>Enter</kbd></dt><dd>Between waves: open shop · start next wave</dd>
         <dt><kbd>Esc</kbd></dt><dd>Pause</dd>
       </dl>
@@ -494,6 +532,8 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
     </div>
     <div class="over-xp"><div class="row"><span id="oLvl">Level 1</span><span id="oLvlTxt">0 / 400 XP</span></div><div class="xpbar"><i id="oXpBar"></i></div></div>
     <div class="over-list" id="overList"></div>
+    <div class="lbl" style="margin-top:12px">Top runs · <span id="oBoardLbl"></span></div>
+    <div class="board" id="overBoard"></div>
     <div class="actions" style="flex-direction:row;flex-wrap:wrap">
       <button class="btn primary" id="btnRetry">Redeploy</button>
       <button class="btn" id="btnOverShop">Shop</button>

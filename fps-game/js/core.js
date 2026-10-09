@@ -31,11 +31,11 @@ const bus = {
 
 // ---------------- settings ----------------
 const QUALITY = {
-  low: { pixelRatio: 0.85, shadows: false, shadowSize: 1024, particles: 0.5, aa: false },
+  low: { pixelRatio: 0.85, shadows: false, shadowSize: 1024, particles: 0.5, aa: false, lampLights: false },
   medium: { pixelRatio: 1.25, shadows: true, shadowSize: 1024, particles: 0.8, aa: true },
   high: { pixelRatio: 1.75, shadows: true, shadowSize: 2048, particles: 1, aa: true },
 };
-const settings = Object.assign({ sens: 1, fov: 82, vol: 0.8, music: 0.45, quality: 'high', invert: false, dmgNumbers: true }, store.get('fb2-settings', {}));
+const settings = Object.assign({ sens: 1, adsSens: 1, toggleAds: false, fov: 82, vol: 0.8, music: 0.45, quality: 'high', invert: false, dmgNumbers: true, xhStyle: 'cross', xhColor: '#ffffff', xhSize: 1, fpsCounter: false, dynRes: true, padSens: 1 }, store.get('fb2-settings', {}));
 if (!QUALITY[settings.quality]) settings.quality = 'high';
 function saveSettings() { store.set('fb2-settings', settings); }
 
@@ -61,6 +61,7 @@ function defaultProfile() {
     quests: {},               // questId -> { p: number, done: bool }
     stats: { kills: 0, headshots: 0, bestWave: 0, bestScore: 0, bosses: 0, runs: 0, spent: 0, flawless: 0, explosiveKills: 0, weaponKills: {} },
     difficulty: 'normal', map: 'yard',
+    daily: { day: '', q: [] }, board: {},
   };
 }
 function loadProfile() {
@@ -70,7 +71,8 @@ function loadProfile() {
   const out = Object.assign(d, p);
   out.stats = Object.assign(defaultProfile().stats, p.stats || {});
   out.stats.weaponKills = Object.assign({}, (p.stats && p.stats.weaponKills) || {});
-  for (const k of ['weapons', 'attachments', 'equipped', 'skin', 'upgrades', 'skins', 'quests']) out[k] = Object.assign({}, d[k], p[k] || {});
+  for (const k of ['weapons', 'attachments', 'equipped', 'skin', 'upgrades', 'skins', 'quests', 'board']) out[k] = Object.assign({}, d[k], p[k] || {});
+  out.daily = p.daily && Array.isArray(p.daily.q) ? p.daily : d.daily;
   out.loadout = Object.assign(defaultProfile().loadout, p.loadout || {});
   return out;
 }

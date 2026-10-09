@@ -6,10 +6,79 @@ const run = {
   active: false, wave: 0, score: 0, kills: 0, heads: 0, shots: 0, hits: 0, time: 0,
   coins: 0, xp: 0, buffs: {}, questsDone: [], levelsGained: 0, dmgThisWave: 0, bossDmgTaken: 0, streak: 0, killstreak: 0,
   airstrikes: 0, turrets: 0, multiT: 0, multi: 0, diff: 'normal', map: 'yard', drops: [],
+  combo: 0, comboT: 0, bestCombo: 0, mutator: null, lastMutator: null, oc: {}, boxRolls: 0,
 };
 function resetRun() {
-  Object.assign(run, { active: true, wave: 0, score: 0, kills: 0, heads: 0, shots: 0, hits: 0, time: 0, coins: 0, xp: 0, buffs: {}, questsDone: [], levelsGained: 0, dmgThisWave: 0, bossDmgTaken: 0, streak: 0, killstreak: 0, airstrikes: 0, turrets: 0, multiT: 0, multi: 0, drops: [] });
+  Object.assign(run, { active: true, wave: 0, score: 0, kills: 0, heads: 0, shots: 0, hits: 0, time: 0, coins: 0, xp: 0, buffs: {}, questsDone: [], levelsGained: 0, dmgThisWave: 0, bossDmgTaken: 0, streak: 0, killstreak: 0, airstrikes: 0, turrets: 0, multiT: 0, multi: 0, drops: [], combo: 0, comboT: 0, bestCombo: 0, mutator: null, lastMutator: null, oc: {}, boxRolls: 0 });
   run.diff = profile.difficulty; run.map = profile.map;
+}
+
+// ---------------- round multipliers ----------------
+// Risk modifiers rolled for some rounds. `reward` multiplies score and XP; coins use reward × (coins || 1).
+const MUTATORS = {
+  armored: { name: 'Armored', desc: 'Bots have 35% more health.', reward: 1.4, hp: 1.35 },
+  overclocked: { name: 'Overclocked', desc: 'Bots move 20% faster.', reward: 1.3, speed: 1.2 },
+  swarm: { name: 'Swarm', desc: '40% more bots, each with 20% less health.', reward: 1.35, count: 1.4, hp: 0.8 },
+  glass: { name: 'Glass cannons', desc: 'Bots hit 40% harder but have 25% less health.', reward: 1.3, dmg: 1.4, hp: 0.75 },
+  blackout: { name: 'Blackout', desc: 'Visibility drops sharply this round.', reward: 1.3 },
+  volatile: { name: 'Volatile', desc: 'Destroyed bots explode after a short delay. Step back.', reward: 1.3 },
+  goldrush: { name: 'Gold rush', desc: 'Bots have 20% more health but drop double coins.', reward: 1, coins: 2, hp: 1.2 },
+  elite: { name: 'Elite squad', desc: 'Fewer bots, but each is tougher and faster.', reward: 1.45, count: 0.7, hp: 1.5, speed: 1.1 },
+};
+function rollMutator(w) {
+  if (w < 3 || w % 5 === 0 || Math.random() > 0.6) return null;
+  const keys = Object.keys(MUTATORS).filter(k => k !== run.lastMutator);
+  return pick(keys);
+}
+const COMBO_WINDOW = 4;
+function roundMults() {
+  const w = Math.max(1, run.wave), mu = (run.mutator && MUTATORS[run.mutator]) || null, c = Math.min(run.combo, 20);
+  const wave = 1 + 0.1 * (w - 1), mut = mu ? mu.reward : 1, combo = 1 + 0.1 * c;
+  return {
+    wave, mut, combo, total: wave * mut * combo,
+    coins: (1 + 0.03 * (w - 1)) * mut * (mu && mu.coins || 1) * (1 + 0.01 * c),
+    xp: (1 + 0.03 * (w - 1)) * mut,
+  };
+}
+
+// ---------------- daily challenges ----------------
+const DAILY_POOL = [
+  { id: 'kills', name: 'Scrapper', desc: n => `Destroy ${n} robots.`, goals: [60, 90, 120], ev: 'kill', reward: 300 },
+  { id: 'heads', name: 'Precision', desc: n => `Land ${n} headshot kills.`, goals: [20, 30, 45], ev: 'headshot', reward: 350 },
+  { id: 'wave', name: 'Endurance', desc: n => `Survive to wave ${n} in one run.`, goals: [6, 8, 10], ev: 'wave', max: true, reward: 400 },
+  { id: 'drones', name: 'Skeet shooter', desc: n => `Destroy ${n} drones.`, goals: [15, 25], ev: 'killType', type: 'drone', reward: 300 },
+  { id: 'runners', name: 'Stopping power', desc: n => `Destroy ${n} runners.`, goals: [20, 30], ev: 'killType', type: 'runner', reward: 300 },
+  { id: 'boom', name: 'Demolitions', desc: n => `Destroy ${n} robots with explosives.`, goals: [10, 15], ev: 'explosiveKill', reward: 350 },
+  { id: 'boss', name: 'Giant hunter', desc: () => 'Defeat a boss.', goals: [1], ev: 'boss', reward: 500 },
+  { id: 'combo', name: 'Chain reaction', desc: n => `Reach a ${n}-kill combo.`, goals: [12, 18], ev: 'combo', max: true, reward: 350 },
+  { id: 'box', name: 'Feeling lucky', desc: n => `Roll the mystery crate ${n} times.`, goals: [2, 3], ev: 'box', reward: 250 },
+];
+function todayKey() { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; }
+function seeded(seed) { let s = 0; for (const ch of seed) s = (s * 31 + ch.charCodeAt(0)) >>> 0; return () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; }; }
+function ensureDaily() {
+  const day = todayKey();
+  if (profile.daily.day === day && profile.daily.q.length) return profile.daily.q;
+  const r = seeded(day), pool = DAILY_POOL.slice(), q = [];
+  while (q.length < 3 && pool.length) { const t = pool.splice(Math.floor(r() * pool.length), 1)[0]; q.push({ id: t.id, goal: t.goals[Math.floor(r() * t.goals.length)], p: 0, done: false }); }
+  profile.daily = { day, q }; saveProfile();
+  return q;
+}
+function dailyDef(d) { return DAILY_POOL.find(t => t.id === d.id); }
+function dailyEvent(ev, amount, extra) {
+  for (const d of ensureDaily()) {
+    const t = dailyDef(d); if (!t || d.done || t.ev !== ev) continue;
+    if (t.type && t.type !== extra.type) continue;
+    d.p = t.max ? Math.max(d.p, amount) : d.p + amount;
+    if (d.p >= d.goal) { d.p = d.goal; d.done = true; addCoins(t.reward, null, { raw: true, silent: true }); addXp(200, { raw: true }); bus.emit('quest', { q: { name: `Daily: ${t.name}` }, text: `${t.reward} coins · 200 XP` }); }
+  }
+}
+
+// ---------------- personal leaderboards ----------------
+function boardKey(map, diff) { return `${map}|${diff}`; }
+function recordScore(entry) {
+  const k = boardKey(entry.map, entry.diff), list = profile.board[k] || (profile.board[k] = []);
+  list.push(entry); list.sort((a, b) => b.score - a.score); list.length = Math.min(list.length, 5);
+  saveProfile(); return list.indexOf(entry);
 }
 
 // ---------------- levels ----------------
@@ -92,6 +161,7 @@ const QUESTS = [
 ];
 function questState(id) { return profile.quests[id] || (profile.quests[id] = { p: 0, done: false }); }
 function questEvent(ev, amount = 1, extra = {}) {
+  dailyEvent(ev, amount, extra);
   for (const q of QUESTS) {
     if (q.ev !== ev) continue;
     const st = questState(q.id); if (st.done) continue;

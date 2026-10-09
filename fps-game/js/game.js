@@ -1,10 +1,10 @@
 'use strict';
 // Player controller, weapon handling, wave director, game states, input and the main loop.
 
-let state = 'menu', time = 0, shake = 0, deathT = 0, heartT = 0, locked = false, expectUnlock = false, lookGrace = 0;
+let state = 'menu', time = 0, shake = 0, deathT = 0, heartT = 0, locked = false, expectUnlock = false, lookGrace = 0, hitStop = 0;
 const player = { pos: new V3(0, 0, 20), vel: new V3(), radius: 0.4, height: 1.8, onGround: true, landV: 0, yaw: 0, pitch: 0, hp: 100, armor: 50, lastHurt: -99, crouch: 0, stepDist: 0, frags: 3, stuns: 2, alive: true, stunT: 0, slideT: 0, slideCd: 0, jumpHeld: false, streakWarned: false };
-const G = { cur: 0, prev: 1, cooldown: 0, reloading: false, reloadT: 0, switchT: 0, switchTo: -1, ads: 0, bloom: 0, fireQueued: false, recoilPitch: 0, pumpT: 1, nadeT: 0, flashT: 0, burstLeft: 0, burstT: 0, dryClicked: false };
-const VMS = { kick: 0, kickRot: 0, swayX: 0, swayY: 0, bob: 0, sprint: 0, land: 0, nade: 0, slide: 0, slideTilt: 0 };
+const G = { cur: 0, prev: 1, cooldown: 0, reloading: false, reloadT: 0, reloadDur: 1, sprayN: 0, lastShotT: -9, adsToggled: false, switchT: 0, switchTo: -1, ads: 0, bloom: 0, fireQueued: false, recoilPitch: 0, pumpT: 1, nadeT: 0, flashT: 0, burstLeft: 0, burstT: 0, dryClicked: false };
+const VMS = { kick: 0, kickRot: 0, swayX: 0, swayY: 0, bob: 0, sprint: 0, land: 0, nade: 0, slide: 0, slideTilt: 0, inspect: 0, mantle: 0 };
 const waves = { active: false, queue: [], spawnT: 0, inter: 0, bossPending: 0, boss: false };
 let loadout = [profile.loadout.primary, profile.loadout.secondary];
 let ammo = [{ mag: 0, reserve: 0 }, { mag: 0, reserve: 0 }];
@@ -19,10 +19,14 @@ function weaponRuntime() {
   const s = weaponStats(loadout[G.cur]), mods = buffMods();
   s.rpm *= mods.rate; if (s.burstDelay) s.burstDelay /= mods.rate;
   s.reload *= mods.reload; s.mag = Math.max(1, Math.round(s.mag * mods.mag));
+  const oc = run.active ? (run.oc[s.id] || 0) : 0;
+  if (oc) { s.dmg *= 1 + 0.45 * oc; s.mag = Math.round(s.mag * (1 + 0.25 * oc)); s.reload *= 1 - 0.08 * oc; }
+  s.oc = oc;
   rtCache = s; rtFrame = frameNo; return s;
 }
-function magCap(id) { const s = weaponStats(id); return Math.max(1, Math.round(s.mag * buffMods().mag)); }
-function reserveCap(id) { return Math.round(WEAPON_BY_ID[id].reserve * 1.5); }
+function ocTier(id) { return run.active ? (run.oc[id] || 0) : 0; }
+function magCap(id) { const s = weaponStats(id); return Math.max(1, Math.round(s.mag * buffMods().mag * (1 + 0.25 * ocTier(id)))); }
+function reserveCap(id) { return Math.round(WEAPON_BY_ID[id].reserve * 1.5 * (1 + 0.3 * ocTier(id))); }
 function currentWeapon() { return WEAPON_BY_ID[loadout[G.cur]]; }
 function currentAmmo() { return ammo[G.cur]; }
 function eyeHeight() { return lerp(1.65, 1.05, player.crouch); }
@@ -54,6 +58,7 @@ function hurtPlayer(amount, from, explosive) {
   amount *= buffMods().armorMul;
   const absorbed = Math.min(player.armor, amount * 0.6); player.armor -= absorbed; player.hp -= amount - absorbed;
   run.dmgThisWave += amount; if (boss && !boss.dead) boss.tookDamage = true;
+  if (run.combo > 1 && amount >= 5) { run.combo = Math.floor(run.combo / 2); run.comboT = Math.min(run.comboT, COMBO_WINDOW * 0.6); }
   player.lastHurt = time; shake = Math.min(1, shake + 0.2 + amount * 0.01);
   SFX.hurt(); ui.hurt(); if (from && !explosive) ui.dmgIndicator(from);
   if (player.hp < maxHp() * 0.35 && run.killstreak > 0) { if (run.killstreak >= 3) ui.toast('Killstreak lost', 'Integrity dropped below 35%'); run.killstreak = 0; }
@@ -67,7 +72,7 @@ function die() {
 // ---------------- movement ----------------
 function updatePlayer(dt) {
   const s = weaponRuntime(), mods = buffMods();
-  const zoomSens = lerp(1, s.zoom, G.ads);
+  const zoomSens = lerp(1, s.zoom * settings.adsSens, G.ads);
   player.yaw -= look.dx * 0.0022 * settings.sens * zoomSens;
   player.pitch -= look.dy * 0.0022 * settings.sens * zoomSens * (settings.invert ? -1 : 1);
   VMS.swayX = damp(VMS.swayX, clamp(look.dx * 0.0006, -0.05, 0.05), 10, dt); VMS.swayY = damp(VMS.swayY, clamp(look.dy * 0.0006, -0.05, 0.05), 10, dt);
@@ -75,6 +80,7 @@ function updatePlayer(dt) {
   const rec = G.recoilPitch * Math.min(1, dt * 7); G.recoilPitch -= rec; player.pitch -= rec * 0.7;
   player.pitch = clamp(player.pitch, -1.5, 1.5);
   player.stunT = Math.max(0, player.stunT - dt); player.slideCd = Math.max(0, player.slideCd - dt);
+  if (player.mantle) { updateMantle(dt); return; }
   const f = (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0), st = (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0);
   const sprinting = keys.ShiftLeft && f > 0 && !keys.KeyC && G.ads < 0.3 && !G.reloading && player.slideT <= 0;
   const sy = Math.sin(player.yaw), cy = Math.cos(player.yaw);
@@ -92,6 +98,8 @@ function updatePlayer(dt) {
   const wantCrouch = keys.KeyC || player.slideT > 0;
   player.crouch = damp(player.crouch, wantCrouch ? 1 : 0, 12, dt);
   player.height = lerp(1.8, 1.2, player.crouch);
+  if (keys.Space && !player.jumpHeld && tryMantle()) { player.jumpHeld = true; return; }
+  if (!player.onGround && f > 0 && player.vel.y < 2 && tryMantle(1.25)) return;
   if (keys.Space && player.onGround && !player.jumpHeld) { player.vel.y = 8; player.onGround = false; player.jumpHeld = true; if (player.slideT > 0) { player.slideT = 0; player.slideCd = 0.6; } SFX.land(0.4); }
   if (!keys.Space) player.jumpHeld = false;
   moveBody(player, dt);
@@ -107,6 +115,27 @@ function updatePlayer(dt) {
   if (time - player.lastHurt > 5 && player.hp < mh) player.hp = Math.min(mh, player.hp + 6 * dt);
   if (player.hp > mh) player.hp = mh;
   if (player.hp < mh * 0.3) { heartT -= dt; if (heartT <= 0) { heartT = 0.95; SFX.heartbeat(); } }
+}
+// mantle onto ledges up to chest height
+function tryMantle(maxRise = 1.75) {
+  const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  for (const reach of [0.75, 1.1]) {
+    const px = player.pos.x + fx * reach, pz = player.pos.z + fz * reach;
+    const top = topAt(px, pz, 0.25), rise = top - player.pos.y;
+    if (rise < 0.6 || rise > maxRise) continue;
+    if (!pointFree(px, pz, 0.32, top + 0.05, top + 1.75)) continue;
+    if (top > world.ceiling - 1.8) continue;
+    player.mantle = { t: 0, dur: 0.18 + rise * 0.14, from: player.pos.clone(), to: new V3(px, top, pz) };
+    player.vel.set(0, 0, 0); player.slideT = 0; VMS.mantle = 1; SFX.land(0.5); SFX.slide();
+    return true;
+  }
+  return false;
+}
+function updateMantle(dt) {
+  const m = player.mantle; m.t += dt; const k = Math.min(1, m.t / m.dur);
+  const up = smooth(Math.min(1, k * 1.6)), fwd = smooth(Math.max(0, (k - 0.35) / 0.65));
+  player.pos.set(lerp(m.from.x, m.to.x, fwd), lerp(m.from.y, m.to.y, up), lerp(m.from.z, m.to.z, fwd));
+  if (k >= 1) { player.mantle = null; player.onGround = true; player.vel.set(0, 0, 0); }
 }
 function trySlide() {
   const hs = Math.hypot(player.vel.x, player.vel.z);
@@ -141,9 +170,10 @@ function equip(i, instant) {
 function startReload() {
   const s = weaponRuntime(), am = ammo[G.cur];
   if (G.reloading || G.switchT > 0 || am.mag >= s.mag || am.reserve <= 0 || buffMods().infinite) return;
-  G.reloading = true; G.reloadT = 0; G.burstLeft = 0;
+  G.reloading = true; G.reloadT = 0; G.burstLeft = 0; VMS.inspect = 0;
+  G.reloadDur = s.shellReload ? s.reload : s.reload * (am.mag > 0 ? 0.8 : 1); // tactical reloads are faster than empty ones
   if (s.shellReload) SFX.click(2200, 0.15);
-  else { SFX.click(1600, 0.2, 0.1); SFX.thunk(s.reload * 0.55, 0.3); SFX.click(2800, 0.25, s.reload * 0.85); SFX.click(2000, 0.2, s.reload * 0.9); }
+  else { SFX.click(1600, 0.2, 0.1); SFX.thunk(G.reloadDur * 0.55, 0.3); SFX.click(2800, 0.25, G.reloadDur * 0.85); SFX.click(2000, 0.2, G.reloadDur * 0.9); }
 }
 function updateWeapon(dt) {
   let s = weaponRuntime(), am = ammo[G.cur];
@@ -156,13 +186,13 @@ function updateWeapon(dt) {
     if (before > 0.2 && G.switchT <= 0.2 && G.switchTo >= 0) { GUNS[loadout[G.cur]].g.visible = false; G.prev = G.cur; G.cur = G.switchTo; G.switchTo = -1; GUNS[loadout[G.cur]].g.visible = true; SFX.click(2400, 0.12); s = weaponRuntime(); am = ammo[G.cur]; }
     if (G.switchT < 0) G.switchT = 0;
   }
-  const wantAds = mouseR && G.switchT <= 0 && VMS.sprint < 0.5 && player.slideT <= 0 && !(G.reloading && !s.shellReload);
+  const wantAds = (settings.toggleAds ? G.adsToggled : mouseR || pad.lt) && G.switchT <= 0 && VMS.sprint < 0.5 && player.slideT <= 0 && !(G.reloading && !s.shellReload);
   G.ads = clamp(G.ads + (wantAds ? 1 : -1) * dt * s.adsSpeed, 0, 1);
   if (G.reloading) {
     G.reloadT += dt;
     if (s.shellReload) {
       if (G.reloadT >= s.reload) { G.reloadT = 0; am.mag++; am.reserve--; SFX.thunk(0, 0.25); SFX.click(3000, 0.12, 0.05); VMS.kick += 0.02; if (am.mag >= s.mag || am.reserve <= 0) { G.reloading = false; G.pumpT = 0; SFX.click(1200, 0.3, 0.1); SFX.click(1800, 0.3, 0.25); } }
-    } else if (G.reloadT >= s.reload) { const n = Math.min(s.mag - am.mag, am.reserve); am.mag += n; am.reserve -= n; G.reloading = false; }
+    } else if (G.reloadT >= G.reloadDur) { const n = Math.min(s.mag - am.mag, am.reserve); am.mag += n; am.reserve -= n; G.reloading = false; }
   }
   // burst in progress
   if (G.burstLeft > 0) {
@@ -172,7 +202,7 @@ function updateWeapon(dt) {
       else { G.burstLeft = 0; G.cooldown = 0.25; }
     }
   }
-  const want = s.fire === 'auto' ? mouseL : G.fireQueued;
+  const want = s.fire === 'auto' ? (mouseL || pad.rt) : G.fireQueued;
   if (want && player.alive && G.switchT <= 0 && G.nadeT < 0.5 && G.cooldown <= 0 && G.burstLeft <= 0) {
     if (G.reloading && s.shellReload && am.mag > 0) G.reloading = false;
     if (!G.reloading) {
@@ -181,7 +211,7 @@ function updateWeapon(dt) {
       else fire(s, am);
     }
   }
-  if (!mouseL) G.dryClicked = false;
+  if (!mouseL && !pad.rt) G.dryClicked = false;
   G.fireQueued = false;
   if (am.mag <= 0 && !G.reloading && am.reserve > 0 && G.cooldown <= 0 && !mouseL && !mods.infinite) startReload();
   if (G.pumpT < 1) G.pumpT += dt / 0.45;
@@ -248,7 +278,11 @@ function fire(s, am) {
   gun.flash.visible = true; gun.flash.material.rotation = Math.random() * 6.28; const fs = s.flash * (s.silenced ? 0.35 : 1); gun.flash.scale.set(fs, fs, 1);
   G.flashT = 0.05; muzzleLight.position.copy(muzzleW); muzzleLight.color.setHex(s.flashColor || 0xffb060); muzzleLight.intensity = s.silenced ? 1.2 : 5; vmFlashLight.intensity = s.silenced ? 1 : 4;
   const recoilMul = (player.crouch > 0.5 ? 0.7 : 1) * lerp(1, 0.6 * s.adsRecoil, G.ads);
-  player.pitch += s.recoil * recoilMul * rand(0.8, 1.2); player.yaw += s.recoil * recoilMul * rand(-0.35, 0.35);
+  if (time - G.lastShotT > 0.35) G.sprayN = 0;
+  G.sprayN++; G.lastShotT = time; VMS.inspect = 0;
+  // learnable spray: a per-weapon horizontal pattern plus a little noise; vertical kick climbs over the first shots
+  player.pitch += s.recoil * recoilMul * (1 + Math.min(G.sprayN, 10) * 0.035) * rand(0.95, 1.05);
+  player.yaw += s.recoil * recoilMul * (recoilPattern(s.id, G.sprayN) * 0.55 + rand(-0.08, 0.08));
   G.recoilPitch += s.recoil * recoilMul;
   G.bloom += s.recoil * 0.9;
   VMS.kick += s.kick; VMS.kickRot += s.kick * 2.2; VMS.slide = 1;
@@ -258,6 +292,8 @@ function fire(s, am) {
   if (!s.pump && !s.projectile) { ejectShell(s.id); SFX.tink(rand(0.35, 0.55)); }
   if (!s.silenced) for (let i = 0; i < 2; i++) SMOKE.spawn(muzzleW, tv.copy(camFwd).multiplyScalar(rand(0.5, 1.5)).add(tv2.set(0, 0.4, 0)), rand(0.5, 1), 0.05, 0.35, COL.dust, COL.dustEnd, { drag: 2, alpha: 0.25 });
 }
+const PATTERN_SEED = { pistol: 0.3, smg: 1.7, rifle: 0.9, burst: 2.4, shotgun: 0, lmg: 3.1, sniper: 0, plasma: 4.2 };
+function recoilPattern(id, n) { const sd = PATTERN_SEED[id] || 0; return Math.sin(n * 0.62 + sd) * (n < 4 ? 0.35 : 0.9) + (n > 8 ? Math.sin(sd * 3) * 0.4 : 0); }
 function vmMuzzleWorld(gun, out) {
   vmRoot.updateMatrixWorld(true); gun.muzzle.getWorldPosition(out);
   const d = out.length(); vmCamera.updateMatrixWorld(); out.project(vmCamera); out.z = 0.5; out.unproject(camera).sub(camera.position).normalize().multiplyScalar(d * 1.1).add(camera.position);
@@ -307,11 +343,13 @@ function updateViewmodel(dt) {
   if (G.switchT > 0) { const k = G.switchT > 0.2 ? (0.4 - G.switchT) / 0.2 : G.switchT / 0.2; p.y -= smooth(k) * 0.25; rx -= smooth(k) * 0.6; }
   const mag = gun.parts.mag;
   if (G.reloading && !s.shellReload) {
-    const t = G.reloadT / s.reload; const rl = Math.sin(Math.min(1, t) * Math.PI); rz += rl * 0.45; rx += rl * 0.2; p.y -= rl * 0.04;
+    const t = G.reloadT / G.reloadDur; const rl = Math.sin(Math.min(1, t) * Math.PI); rz += rl * 0.45; rx += rl * 0.2; p.y -= rl * 0.04;
     if (mag && gun.magY != null) { const drop = t < 0.3 ? smooth(t / 0.3) : t < 0.55 ? 1 : 1 - smooth(Math.min(1, (t - 0.55) / 0.2)); mag.position.y = gun.magY - Math.max(0, drop) * 0.25; mag.visible = !(t > 0.28 && t < 0.4); }
   } else if (mag && gun.magY != null) { mag.position.y = gun.magY; mag.visible = true; }
   if (G.reloading && s.shellReload) { rz += 0.3; rx += 0.1; p.y -= 0.02; }
   if (VMS.nade > 0) { const k = Math.sin(VMS.nade * Math.PI); p.y -= k * 0.2; rx -= k * 0.5; }
+  if (VMS.inspect > 0) { VMS.inspect = Math.max(0, VMS.inspect - dt); const u = 1 - VMS.inspect / 2.4, e = Math.sin(Math.min(1, u) * Math.PI); ry += e * 0.9; rz += Math.sin(u * Math.PI * 2) * 0.35 * e; rx += e * 0.25; p.x -= e * 0.06; p.y += e * 0.03; }
+  VMS.mantle = Math.max(0, VMS.mantle - dt * 3); if (VMS.mantle > 0) { p.y -= Math.sin(VMS.mantle * Math.PI) * 0.12; rx -= Math.sin(VMS.mantle * Math.PI) * 0.4; }
   if (!player.alive) p.y -= Math.min(1, deathT) * 0.4;
   vmRoot.position.copy(p); vmRoot.rotation.set(rx, ry, rz);
   if (gun.parts.slide) gun.parts.slide.position.z = -0.03 + VMS.slide * 0.045 + (am.mag === 0 ? 0.04 : 0);
@@ -330,7 +368,8 @@ function updateViewmodel(dt) {
 function composeWave(w) {
   const d = DIFFICULTY[run.diff];
   const isBoss = w % 5 === 0;
-  let count = Math.round((isBoss ? 3 + w * 0.5 : 5 + w * 2) * d.count);
+  const mu = (run.mutator && MUTATORS[run.mutator]) || {};
+  let count = Math.round((isBoss ? 3 + w * 0.5 : 5 + w * 2) * d.count * (mu.count || 1));
   count = Math.min(count, 44);
   const avail = Object.entries(ENEMY_TYPES).filter(([, k]) => k.from <= w);
   const caps = { tank: w >= 6 ? 1 + Math.floor((w - 6) / 4) : 0, sniper: 1 + Math.floor(w / 4), shield: 1 + Math.floor(w / 3), exploder: 2 + Math.floor(w / 3) };
@@ -349,11 +388,18 @@ function composeWave(w) {
 }
 function startWave() {
   run.wave++; run.dmgThisWave = 0;
+  run.mutator = rollMutator(run.wave); if (run.mutator) run.lastMutator = run.mutator;
   const { q, isBoss } = composeWave(run.wave);
+  applyMutatorFx();
   waves.queue = q; waves.active = true; waves.spawnT = 1.2; waves.boss = isBoss; waves.bossPending = isBoss ? 2.5 : 0;
   if (isBoss) { const def = BOSSES[(run.wave / 5 - 1) % 3]; ui.banner(def.name, `${def.title} · boss wave ${run.wave}`, 3, true); Music.play('boss'); run.bossDmgTaken = 0; }
-  else { ui.banner(`Wave ${run.wave}`, `${q.length} hostiles inbound`); Music.play('combat'); const nw = Object.values(ENEMY_TYPES).find(k => k.from === run.wave); if (nw) ui.toast(`New threat: ${nw.name}`, enemyTip(nw)); }
+  else { const rm = roundMults(), mu = run.mutator && MUTATORS[run.mutator]; ui.banner(`Wave ${run.wave}`, mu ? `${mu.name} · ×${rm.wave.toFixed(1)} wave · ×${mu.reward} risk` : `${q.length} hostiles · ×${rm.wave.toFixed(1)} wave multiplier`); if (mu) ui.toast(`Round modifier: ${mu.name}`, `${mu.desc} Reward ×${mu.reward}${mu.coins ? ', coins ×' + mu.coins : ''}.`, 'drop'); Music.play('combat'); const nw = Object.values(ENEMY_TYPES).find(k => k.from === run.wave); if (nw) ui.toast(`New threat: ${nw.name}`, enemyTip(nw)); }
   SFX.siren();
+}
+function applyMutatorFx() {
+  const th = world.map.theme;
+  if (run.mutator === 'blackout') { scene.fog.near = 6; scene.fog.far = Math.min(th.fog[2], 42); hemi.intensity = th.hemi[2] * 0.45; sun.intensity = th.sun[1] * 0.35; }
+  else { scene.fog.near = th.fog[1]; scene.fog.far = th.fog[2]; hemi.intensity = th.hemi[2]; sun.intensity = th.sun[1]; }
 }
 function enemyTip(k) {
   return { Runner: 'Fast melee rusher. Keep moving and shoot early.', Drone: 'Flies erratically. Small target; the glowing eye is its head.', Marksman: 'Long-range shooter. A red laser means it is about to fire: break line of sight.', Bomber: 'Runs at you and self-destructs. Shoot the glowing core to detonate it early.', Juggernaut: 'Slow and very tough. Fires explosive orbs. Hit the purple back vent.', Bulwark: 'Its energy shield blocks frontal fire. Aim for the head or flank to hit the back cell.' }[k.name] || '';
@@ -383,9 +429,10 @@ function spawnEnemy(kind) {
 }
 function waveCleared() {
   waves.active = false;
-  const w = run.wave;
-  const bonus = addCoins(25 * w, null);
-  addXp(60 + 20 * w);
+  const w = run.wave, rmw = roundMults();
+  const bonus = addCoins(25 * w * rmw.coins, null);
+  addXp((60 + 20 * w) * rmw.xp);
+  run.mutator = null; applyMutatorFx();
   let flawless = run.dmgThisWave <= 0;
   if (flawless) { const fb = addCoins(50 + 10 * w, null); profile.stats.flawless++; questEvent('flawless'); ui.toast('Flawless wave', `+${fb} coins for taking no damage`, 'drop'); }
   profile.stats.bestWave = Math.max(profile.stats.bestWave, w);
@@ -411,6 +458,52 @@ function chooseBuff(k) {
   resumeFromMenu();
   ui.banner('Intermission', 'B · open the shop   Enter · start the next wave', 3);
 }
+// ---------------- stations: mystery crate and overclock forge ----------------
+const CRATE_COST = 950;
+function ocCost(tier) { return [1200, 2400, 3600][tier] || 0; }
+let rolling = null;
+function nearStation() { if (!world.stations) return null; for (const st of world.stations) if (Math.hypot(st.pos.x - player.pos.x, st.pos.z - player.pos.z) < 2.4 && Math.abs(st.pos.y - player.pos.y) < 1.5) return st; return null; }
+function stationPrompt() {
+  const st = nearStation(); if (!st || rolling) return null;
+  if (st.type === 'crate') return `E · Mystery crate · ${CRATE_COST} coins · random weapon for this run`;
+  const id = loadout[G.cur], tier = ocTier(id);
+  if (tier >= 3) return `${WEAPON_BY_ID[id].name} is fully overclocked`;
+  return `E · Overclock ${WEAPON_BY_ID[id].name} to tier ${tier + 1} · ${fmt(ocCost(tier))} coins`;
+}
+function interact() {
+  const st = nearStation(); if (!st || rolling || G.switchT > 0) return;
+  if (st.type === 'crate') {
+    if (!spendCoins(CRATE_COST)) { SFX.deny(); ui.prompt(`Need ${fmt(CRATE_COST - profile.coins)} more coins`, true, 1.4); return; }
+    const pool = WEAPONS.filter(w => !loadout.includes(w.id)).flatMap(w => w.id === 'plasma' ? [w.id] : [w.id, w.id]);
+    rolling = { st, t: 0, dur: 2.4, result: pick(pool), tick: 0 }; run.boxRolls++; questEvent('box');
+    SFX.charge(st.pos, true);
+  } else {
+    const id = loadout[G.cur], tier = ocTier(id); if (tier >= 3) return;
+    const cost = ocCost(tier);
+    if (!spendCoins(cost)) { SFX.deny(); ui.prompt(`Need ${fmt(cost - profile.coins)} more coins`, true, 1.4); return; }
+    run.oc[id] = tier + 1; applyOcGlow(id);
+    ammo[G.cur].mag = magCap(id); ammo[G.cur].reserve = reserveCap(id);
+    SFX.powerup(); SFX.boom(st.pos, 0.2); flashLight(tv.copy(st.pos).setY(1.5), 0xff7a2e, 8, 10);
+    for (let i = 0; i < 50; i++) FX.spawn(tv.copy(st.pos).setY(1.3), randDir(tv2, rand(2, 6)), rand(0.3, 0.7), 0.15, 0.02, COL.fire, COL.fireEnd, { drag: 2 });
+    ui.toast(`Overclocked: ${WEAPON_BY_ID[id].name} · tier ${tier + 1}`, `+${45 * (tier + 1)}% damage, +${25 * (tier + 1)}% magazine, full ammo`, 'drop');
+  }
+}
+const OC_GLOW = [0, 0x2affd5, 0xff3ea5, 0xffd24a];
+function applyOcGlow(id) { const g = GUNS[id], t = ocTier(id); if (!g) return; if (!t) { applySkin(id); return; } g.mats.accent.emissive.setHex(OC_GLOW[t]); g.mats.accent.emissiveIntensity = 1.4; g.mats.accent.color.setHex(OC_GLOW[t]).convertSRGBToLinear(); }
+function updateStations(dt) {
+  if (rolling) {
+    const r = rolling; r.t += dt; r.tick -= dt;
+    if (r.tick <= 0) { r.tick = 0.05 + r.t * 0.06; SFX.click(1800 + Math.random() * 800, 0.12); ui.prompt(`Rolling · ${WEAPON_BY_ID[pick(WEAPONS).id].name}`, false, 0.3); }
+    r.st.lid.position.y = 0.97 + Math.min(1, r.t * 2) * 0.35; r.st.beam.material.opacity = 0.25;
+    if (r.t >= r.dur) {
+      const id = r.result; GUNS[loadout[G.cur]].g.visible = false;
+      loadout[G.cur] = id; ammo[G.cur] = { mag: magCap(id), reserve: reserveCap(id) };
+      GUNS[id].g.visible = true; G.reloading = false; G.switchT = 0.4; G.switchTo = -1; refreshViewmodel(id); applyOcGlow(id);
+      SFX.levelUp(); ui.toast(`Crate weapon: ${WEAPON_BY_ID[id].name}`, 'Replaces your current slot for this run', 'drop');
+      r.st.lid.position.y = 0.97; rolling = null;
+    }
+  }
+}
 function nextWaveNow() { if (!waves.active && run.active) waves.inter = 0.01; }
 function openShop() { if (waves.active || state !== 'playing') return; state = 'shop'; releaseMouse(); ui.openArmory('intermission'); }
 
@@ -419,6 +512,8 @@ const canvas = renderer.domElement;
 function requestLock() { try { const p = canvas.requestPointerLock(); if (p && p.catch) p.catch(() => {}); } catch (e) {} }
 function releaseMouse() { mouseL = mouseR = false; for (const k in keys) keys[k] = false; if (locked && document.exitPointerLock) { expectUnlock = true; document.exitPointerLock(); } }
 function resetWorld() {
+  clearDelayed(); rolling = null; hitStop = 0;
+  if (world.map) { run.mutator = null; applyMutatorFx(); }
   enemies.slice().forEach(e => { if (e.isBoss) e.remove(); else { scene.remove(e.m.g); if (e.beam) scene.remove(e.beam); } }); enemies.length = 0; boss = null;
   clearProjectiles(); clearTurrets(); clearCoins();
   grenades.forEach(n => scene.remove(n.m)); grenades.length = 0;
@@ -438,7 +533,7 @@ function startRun() {
   if (!pointFree(player.pos.x, player.pos.z, 0.5, player.pos.y + 0.1, player.pos.y + 1.7)) player.pos.y = topAt(player.pos.x, player.pos.z, 0.4);
   player.yaw = Math.atan2(player.pos.x, player.pos.z) || 0;
   Object.assign(G, { cooldown: 0, reloading: false, switchT: 0, switchTo: -1, ads: 0, bloom: 0, recoilPitch: 0, pumpT: 1, nadeT: 0, burstLeft: 0 });
-  setupLoadout(true);
+  setupLoadout(true); WEAPONS.forEach(w => applySkin(w.id));
   waves.active = false; waves.queue = []; waves.inter = 3.5; waves.bossPending = 0;
   profile.stats.runs++; saveProfile();
   ui.h.feed.innerHTML = ''; ui.h.mapLbl.textContent = world.map.name;
@@ -459,6 +554,8 @@ function gameOver(quit) {
   const d = DIFFICULTY[run.diff];
   const summary = { quit, wave: run.wave, score: run.score, kills: run.kills, heads: run.heads, acc: run.shots ? Math.round(run.hits / run.shots * 100) : 0, coins: run.coins, xp: run.xp, time: run.time, levels: run.levelsGained, quests: run.questsDone.slice(), drops: run.drops.slice(), map: world.map.name, diff: d.label, mapsBefore: mapsAtStart.slice() };
   summary.newBest = run.wave > 0 && run.wave >= profile.stats.bestWave && !quit;
+  summary.bestCombo = run.bestCombo; summary.mapId = world.map.id; summary.diffId = run.diff;
+  summary.rank = run.score > 0 ? recordScore({ score: run.score, wave: run.wave, kills: run.kills, map: world.map.id, diff: run.diff, date: todayKey() }) : -1;
   profile.stats.bestWave = Math.max(profile.stats.bestWave, quit ? run.wave - (waves.active ? 1 : 0) : run.wave);
   profile.stats.bestScore = Math.max(profile.stats.bestScore, run.score);
   run.active = false; saveProfile(true);
@@ -485,7 +582,7 @@ document.addEventListener('mousemove', e => {
 canvas.addEventListener('mousedown', e => {
   if (state !== 'playing') return;
   if (!locked) requestLock();
-  if (e.button === 0) { mouseL = true; G.fireQueued = true; } if (e.button === 2) mouseR = true;
+  if (e.button === 0) { mouseL = true; G.fireQueued = true; VMS.inspect = 0; } if (e.button === 2) { mouseR = true; G.adsToggled = !G.adsToggled; VMS.inspect = 0; }
 });
 document.addEventListener('mouseup', e => { if (e.button === 0) mouseL = false; if (e.button === 2) mouseR = false; });
 document.addEventListener('contextmenu', e => { if (state === 'playing') e.preventDefault(); });
@@ -500,6 +597,8 @@ document.addEventListener('keydown', e => {
   if (e.repeat) return;
   switch (e.code) {
     case 'KeyR': startReload(); break;
+    case 'KeyE': interact(); break;
+    case 'KeyI': if (!G.reloading && G.switchT <= 0) VMS.inspect = 2.4; break;
     case 'KeyG': throwGrenade('frag'); break;
     case 'KeyF': throwGrenade('stun'); break;
     case 'KeyQ': equip(G.prev); break;
@@ -544,12 +643,15 @@ if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').ma
 const clock = new THREE.Clock();
 let menuAngle = 0.6;
 function tick(dt) {
+  pollGamepad(dt);
+  if (hitStop > 0 && state === 'playing') { hitStop -= dt; dt *= 0.25; }
   time += dt; frameNo++;
   if (state === 'playing') {
     run.time += dt; run.multiT = Math.max(0, run.multiT - dt);
-    updatePlayer(dt); updateWeapon(dt);
+    if (run.comboT > 0) { run.comboT -= dt; if (run.comboT <= 0) { run.comboT = 0; run.combo = 0; } }
+    updatePlayer(dt); updateWeapon(dt); updateStations(dt);
     for (const e of enemies.slice()) if (!e.dead) e.update(dt);
-    updateBolts(dt); updateOrbs(dt); updateArcs(dt); updatePlasma(dt); updateGrenades(dt); updateBarrels(dt); updatePickups(dt); updateTurrets(dt); updateCoins(dt); updateWaves(dt);
+    updateBolts(dt); updateOrbs(dt); updateArcs(dt); updatePlasma(dt); updateGrenades(dt); updateBarrels(dt); updatePickups(dt); updateTurrets(dt); updateCoins(dt); updateDelayed(dt); updateWaves(dt);
     updateCamera(dt); updateViewmodel(dt); ui.update(dt);
   } else if (state === 'dead') {
     deathT += dt; player.pitch = damp(player.pitch, -0.3, 3, dt); player.crouch = Math.min(1, player.crouch + dt * 1.5);
@@ -575,13 +677,75 @@ function render() {
 }
 function frame() {
   requestAnimationFrame(frame);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const raw = clock.getDelta(), dt = Math.min(raw, 0.05);
+  perfSample(raw);
   try { tick(dt); } catch (err) { console.error(err); }
   render();
 }
 
+// ---------------- performance: FPS counter and dynamic resolution ----------------
+const perf = { ema: 1 / 60, slowT: 0, fastT: 0, scale: 1, shown: 0, el: null };
+function perfSample(raw) {
+  if (raw <= 0 || raw > 0.5) return;
+  perf.ema = lerp(perf.ema, raw, 0.05);
+  if (settings.dynRes && (state === 'playing' || state === 'dead')) {
+    if (perf.ema > 1 / 45) { perf.slowT += raw; perf.fastT = 0; } else if (perf.ema < 1 / 58) { perf.fastT += raw; perf.slowT = 0; } else { perf.slowT = perf.fastT = 0; }
+    if (perf.slowT > 1.2 && perf.scale > 0.55) { perf.scale = Math.max(0.55, perf.scale - 0.1); perf.slowT = 0; applyRes(); }
+    if (perf.fastT > 4 && perf.scale < 1) { perf.scale = Math.min(1, perf.scale + 0.1); perf.fastT = 0; applyRes(); }
+  } else if (!settings.dynRes && perf.scale !== 1) { perf.scale = 1; applyRes(); }
+  perf.shown -= raw;
+  if (settings.fpsCounter && perf.shown <= 0) { perf.shown = 0.4; if (!perf.el) { perf.el = document.createElement('div'); perf.el.style.cssText = 'position:fixed;right:8px;bottom:6px;z-index:30;font:600 11px var(--mono);color:#9fe7c9;background:rgba(0,0,0,.45);padding:2px 6px;pointer-events:none'; document.body.appendChild(perf.el); } perf.el.textContent = `${Math.round(1 / perf.ema)} FPS · ${Math.round(perf.scale * 100)}% res`; perf.el.hidden = false; }
+  else if (!settings.fpsCounter && perf.el) perf.el.hidden = true;
+}
+function applyRes() { renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, QUALITY[settings.quality].pixelRatio) * perf.scale); renderer.setSize(innerWidth, innerHeight); }
+
+// ---------------- gamepad ----------------
+const pad = { connected: false, prev: [], rt: false, lt: false, menuT: 0, held: {} };
+const deadzone = v => Math.abs(v) < 0.12 ? 0 : Math.sign(v) * Math.pow((Math.abs(v) - 0.12) / 0.88, 1.6);
+function pollGamepad(dt) {
+  const gp = navigator.getGamepads ? Array.from(navigator.getGamepads()).find(g => g && g.connected) : null;
+  if (!gp) { if (pad.connected) { pad.connected = false; pad.rt = pad.lt = false; } return; }
+  if (!pad.connected) { pad.connected = true; SFX.init(); ui.toast('Controller connected', 'A to select · B to go back'); }
+  const b = i => !!(gp.buttons[i] && gp.buttons[i].pressed), down = i => b(i) && !pad.prev[i];
+  if (state === 'playing' && player.alive) {
+    const mx = deadzone(gp.axes[0] || 0), my = deadzone(gp.axes[1] || 0), lx = deadzone(gp.axes[2] || 0), ly = deadzone(gp.axes[3] || 0);
+    const want = { KeyW: my < -0.3, KeyS: my > 0.3, KeyA: mx < -0.3, KeyD: mx > 0.3, ShiftLeft: b(10) || (pad.held.ShiftLeft && my < -0.3), Space: b(0), KeyC: b(1) };
+    for (const k in want) { if (want[k]) { if (!keys[k]) pad.held[k] = true; keys[k] = true; } else if (pad.held[k]) { keys[k] = false; pad.held[k] = false; } }
+    // aim slowdown when the crosshair is over a bot
+    let assist = 1;
+    camera.getWorldDirection(tv);
+    for (const e of enemies) { const c = e.center(tv2).sub(camera.position); const d = c.length(); if (d < 60 && c.normalize().dot(tv) > Math.cos(Math.atan2(1.0, d))) { assist = 0.5; break; } }
+    const s = weaponRuntime(), rate = 3.4 * settings.padSens * assist * lerp(1, s.zoom * settings.adsSens, G.ads);
+    player.yaw -= lx * rate * dt; player.pitch -= ly * rate * dt * 0.75 * (settings.invert ? -1 : 1);
+    pad.rt = (gp.buttons[7] && gp.buttons[7].value > 0.4) || false; pad.lt = (gp.buttons[6] && gp.buttons[6].value > 0.4) || false;
+    if (pad.rt && !pad.prevRt) G.fireQueued = true; pad.prevRt = pad.rt;
+    if (down(1)) trySlide();
+    if (down(2)) { if (nearStation()) interact(); else startReload(); }
+    if (down(3)) equip((G.cur + 1) % loadout.length);
+    if (down(5)) throwGrenade('frag'); if (down(4)) throwGrenade('stun');
+    if (down(12)) callAirstrike(); if (down(13)) deployTurret();
+    if (down(8) && !waves.active) openShop();
+    if (down(9)) pauseGame();
+  } else if (state !== 'playing') {
+    pad.rt = pad.lt = false;
+    const scr = [...document.querySelectorAll('.screen')].find(s => !s.hidden);
+    if (scr) {
+      const items = [...scr.querySelectorAll('button:not([disabled]), input')].filter(el => el.offsetParent !== null);
+      const ay = (gp.axes[1] || 0) + (b(13) ? 1 : 0) - (b(12) ? 1 : 0), ax = (gp.axes[0] || 0) + (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
+      pad.menuT -= dt;
+      if ((Math.abs(ay) > 0.5 || Math.abs(ax) > 0.5) && pad.menuT <= 0 && items.length) {
+        pad.menuT = 0.18; let i = items.indexOf(document.activeElement); i = i < 0 ? 0 : clamp(i + (Math.abs(ay) > Math.abs(ax) ? Math.sign(ay) : Math.sign(ax)), 0, items.length - 1); items[i].focus(); SFX.ui();
+      }
+      if (down(0) && document.activeElement && items.includes(document.activeElement)) document.activeElement.click();
+      if (down(1)) { if (state === 'paused') resumeFromMenu(); else if (state === 'shop') resumeFromMenu(); else { const back = [...scr.querySelectorAll('.btn')].find(x => /done|back/i.test(x.textContent)); if (back) back.click(); } }
+      if (state === 'buff') { if (down(14)) ui.buffKey(0); if (down(0) && !items.includes(document.activeElement)) ui.buffKey(1); if (down(15)) ui.buffKey(2); }
+    }
+  }
+  pad.prev = gp.buttons.map(x => x.pressed);
+}
+
 // debug / test hooks
-window.FB = { get state() { return state; }, run, player, enemies, waves, profile: () => profile, world, startRun, startWave, spawnEnemy, spawnBoss, chooseBuff, gameOver, toMenu, openShop, loadMap, tick, render, get boss() { return boss; }, damageEnemy, explosion, throwGrenade, callAirstrike, deployTurret, weaponRuntime, equip, setupLoadout, waveCleared, fire: () => fire(weaponRuntime(), ammo[G.cur]), G, ammo: () => ammo, loadout: () => loadout, questEvent, addCoins, addXp };
+window.FB = { get state() { return state; }, run, player, enemies, waves, profile: () => profile, world, startRun, startWave, spawnEnemy, spawnBoss, chooseBuff, gameOver, toMenu, openShop, loadMap, tick, render, get boss() { return boss; }, damageEnemy, explosion, throwGrenade, callAirstrike, deployTurret, weaponRuntime, equip, setupLoadout, waveCleared, fire: () => fire(weaponRuntime(), ammo[G.cur]), G, ammo: () => ammo, loadout: () => loadout, questEvent, addCoins, addXp, interact, tryMantle, roundMults, perf, get stations() { return world.stations; } };
 
 loadMap(profile.map);
 ui.renderProfile();

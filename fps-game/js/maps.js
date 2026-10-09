@@ -14,7 +14,7 @@ function block(x, y, z, w, h, d, mat, o = {}) {
   if (o.uv) worldUV(geo, w, h, d, o.uv);
   const m = new THREE.Mesh(geo, mat); m.position.set(x, y + h / 2, z);
   if (o.rotY) m.rotation.y = o.rotY;
-  m.castShadow = o.cast !== false; m.receiveShadow = true; world.group.add(m);
+  m.castShadow = o.cast !== false; m.receiveShadow = true; m.userData.mergeable = !o.rotY; world.group.add(m);
   if (o.ray !== false) world.levelMeshes.push(m);
   if (o.collide !== false) addCollider(x - w / 2, y, z - d / 2, x + w / 2, y + h, z + d / 2, m, o.noSight ? { noSight: true } : null);
   return m;
@@ -22,7 +22,7 @@ function block(x, y, z, w, h, d, mat, o = {}) {
 function deco(mesh, ray = false) { world.group.add(mesh); if (ray) world.levelMeshes.push(mesh); return mesh; }
 function cylinder(x, y, z, r, h, mat, o = {}) {
   const m = new THREE.Mesh(new THREE.CylinderGeometry(o.r2 ?? r, r, h, o.seg || 20), mat); m.position.set(x, y + h / 2, z);
-  m.castShadow = o.cast !== false; m.receiveShadow = true; world.group.add(m);
+  m.castShadow = o.cast !== false; m.receiveShadow = true; m.userData.mergeable = true; world.group.add(m);
   if (o.ray !== false) world.levelMeshes.push(m);
   if (o.collide !== false) { const cr = Math.max(r, o.r2 ?? r) * 0.9; addCollider(x - cr, y, z - cr, x + cr, y + h, z + cr, m); }
   return m;
@@ -40,7 +40,8 @@ function lamp(x, z, color = 0xffa860, h = 8, intensity = 1.6, dist = 26) {
   pointLamp(x, h - 0.8, z + 1.5, color, intensity, dist);
 }
 function pointLamp(x, y, z, color, intensity = 1.6, dist = 26, glowSize = 4) {
-  const l = new THREE.PointLight(color, intensity, dist, 1.6); l.position.set(x, y, z); deco(l);
+  const l = new THREE.PointLight(color, intensity, dist, 1.6); l.position.set(x, y, z);
+  if (QUALITY[settings.quality].lampLights !== false) deco(l);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0.8 })); sp.position.copy(l.position); sp.scale.set(glowSize, glowSize, 1); deco(sp);
   return l;
 }
@@ -73,14 +74,15 @@ function skyline(n, rmin, rmax, hmin, hmax, baseY = 0) {
   for (let i = 0; i < n; i++) {
     const a = i / n * Math.PI * 2 + rand(-.05, .05), r = rand(rmin, rmax), w = rand(14, 30), d = rand(14, 30), h = rand(hmin, hmax);
     const geo = new THREE.BoxGeometry(w, h, d); worldUV(geo, w, h, d, 60);
-    const m = new THREE.Mesh(geo, M.city); m.position.set(Math.cos(a) * r, baseY + h / 2, Math.sin(a) * r); m.rotation.y = rand(0, 1); deco(m);
-    if (Math.random() < .4) { const b = new THREE.Mesh(new THREE.BoxGeometry(.6, .6, .6), M.redGlow); b.position.set(m.position.x, baseY + h + 1, m.position.z); deco(b); }
+    const m = new THREE.Mesh(geo, M.city); m.position.set(Math.cos(a) * r, baseY + h / 2, Math.sin(a) * r); m.rotation.y = rand(0, 1); m.userData.mergeable = true; deco(m);
+    if (Math.random() < .4) { const b = new THREE.Mesh(new THREE.BoxGeometry(.6, .6, .6), M.redGlow); b.position.set(m.position.x, baseY + h + 1, m.position.z); b.userData.mergeable = true; deco(b); }
   }
 }
 function groundPlane(size, mat) { const g = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat); g.rotation.x = -Math.PI / 2; g.receiveShadow = true; deco(g, true); return g; }
 function paintLines(lines, color = 0xd8a42a) {
   const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.7, transparent: true, opacity: 0.75 });
   lines.forEach(([x, z, w, d]) => { const p = new THREE.Mesh(new THREE.PlaneGeometry(w, d), paint); p.rotation.x = -Math.PI / 2; p.position.set(x, 0.012, z); p.receiveShadow = true; deco(p); });
+  void paint;
 }
 function emitter(pos, rate, fn) { world.emitters.push({ pos, rate, fn, acc: 0 }); }
 
@@ -90,7 +92,7 @@ const MAPS = [
     id: 'yard', name: 'Yard 9', desc: 'Dusk at the freight terminal. Containers, drums and a raised platform.', unlock: null,
     swatch: 'linear-gradient(160deg,#0a1424,#3d3452 55%,#d36f38)',
     theme: { fog: [0x3b3440, 45, 210], sky: [0x0a1424, 0x3d3452, 0xd36f38], sunCol: 0xff8c3a, sunDir: [-0.55, 0.32, -0.77], sun: [0xffb27a, 2.1], hemi: [0x7d8fb5, 0x2a2018, 0.62], fill: 0.35, exposure: 1.1, stars: 1 },
-    half: 72, playerSpawn: [0, 3, 0],
+    half: 72, playerSpawn: [0, 3, 0], crate: [-12, 24], forge: [12, -24],
     spawns: [[-64, -64], [64, -64], [-64, 64], [64, 64], [0, -64], [0, 64], [-64, 0], [64, 0], [-30, -64], [30, 64], [64, 30], [-64, -30]],
     build() {
       groundPlane(420, M.ground);
@@ -130,7 +132,7 @@ const MAPS = [
     id: 'factory', name: 'Kessler Works', desc: 'An abandoned foundry. Presses, conveyor lines and a furnace that never went cold.', unlock: { level: 3, wave: 8 },
     swatch: 'linear-gradient(160deg,#1a1410,#4a3020 50%,#ff8a30)',
     theme: { fog: [0x2a2320, 22, 120], sky: [0x1a2030, 0x4a3a30, 0x9a6030], sunCol: 0xffa050, sunDir: [-0.35, 0.85, -0.3], sun: [0xffc48a, 1.7], hemi: [0x6a5a50, 0x1a1410, 0.5], fill: 0.25, exposure: 1.1, stars: 0 },
-    half: 50, playerSpawn: [0, 0, 0],
+    half: 50, playerSpawn: [0, 0, 0], crate: [-8, 5], forge: [8, -5],
     spawns: [[-45, -42], [45, -42], [-45, 42], [45, 42], [0, -45], [0, 45], [-45, 0], [45, 6], [-25, -45], [25, 45]],
     build() {
       const floor = new THREE.MeshStandardMaterial({ map: tex(T.concrete, 25), roughness: 0.95, color: 0x9a8f86 });
@@ -197,7 +199,7 @@ const MAPS = [
     id: 'rooftops', name: 'Skyline Rooftops', desc: 'Forty storeys up at night. A helipad, water tower and a sea of neon below.', unlock: { level: 6, wave: 12 },
     swatch: 'linear-gradient(160deg,#050814,#1a1f3d 50%,#ff3ea5)',
     theme: { fog: [0x141a2e, 50, 190], sky: [0x050814, 0x1a1f3d, 0x5a2a60], sunCol: 0x6a5aff, sunDir: [0.4, 0.6, 0.5], sun: [0x9fb4ff, 1.0], hemi: [0x5a6aa0, 0x201830, 0.6], fill: 0.35, exposure: 1.2, stars: 1 },
-    half: 48, playerSpawn: [0, 2.5, 0],
+    half: 48, playerSpawn: [0, 2.5, 0], crate: [-14, -6], forge: [14, 6],
     spawns: [[-43, -43], [43, -43], [-43, 43], [43, 43], [0, -43], [0, 43], [-43, 0], [43, 0], [-20, 43], [20, -43]],
     build() {
       const roof = groundPlane(100, M.gravel);
@@ -247,7 +249,7 @@ const MAPS = [
     id: 'desert', name: 'Outpost Kharon', desc: 'A sun-bleached military base. Hangars, sandbag nests and watchtowers.', unlock: { level: 9, wave: 15 },
     swatch: 'linear-gradient(160deg,#3f78c0,#86b3dd 45%,#e6d2ad)',
     theme: { fog: [0xd9c4a0, 70, 260], sky: [0x3f78c0, 0x86b3dd, 0xe6d2ad], sunCol: 0xfff0c0, sunDir: [0.3, 0.85, 0.35], sun: [0xfff1d6, 2.8], hemi: [0xbcd4ff, 0x8a6a40, 0.7], fill: 0.25, exposure: 0.95, stars: 0 },
-    half: 70, playerSpawn: [0, 0, 6],
+    half: 70, playerSpawn: [0, 0, 6], crate: [-8, -10], forge: [10, 12],
     spawns: [[-64, -60], [64, -60], [-64, 60], [64, 60], [0, -64], [0, 64], [-64, 0], [64, 0], [-34, 64], [34, -64], [64, 34], [-64, -34]],
     build() {
       groundPlane(520, M.sand);
@@ -302,7 +304,7 @@ const MAPS = [
     id: 'lab', name: 'Sublevel 4', desc: 'An underground research lab. Tight lanes, server rows and a live reactor core.', unlock: { level: 12, wave: 20 },
     swatch: 'linear-gradient(160deg,#05080a,#0b3a42 50%,#5ff2ff)',
     theme: { fog: [0x0b1a1f, 18, 85], sky: null, background: 0x05080a, sunCol: 0xffffff, sunDir: [0.25, 1, 0.15], sun: [0xd8f4ff, 0.55], hemi: [0xcfefff, 0x203038, 0.95], fill: 0.2, exposure: 1.15, stars: 0 },
-    half: 38, ceiling: 7, playerSpawn: [0, 0, 22],
+    half: 38, ceiling: 7, playerSpawn: [0, 0, 22], crate: [-7, 25], forge: [7, 25],
     spawns: [[-34, -30], [34, -30], [-34, 30], [34, 30], [0, -34], [-34, 0], [34, 0], [-18, -34], [18, -34]],
     build() {
       groundPlane(80, M.tile);
@@ -350,6 +352,81 @@ const MAP_BY_ID = Object.fromEntries(MAPS.map(m => [m.id, m]));
 function mapUnlocked(m) { return !m.unlock || profile.level >= m.unlock.level || profile.stats.bestWave >= m.unlock.wave; }
 function mapUnlockText(m) { return m.unlock ? `Reach level ${m.unlock.level} or survive to wave ${m.unlock.wave}` : ''; }
 
+// ---------------- static geometry merging (draw-call reduction) ----------------
+function mergeGeometries(list) {
+  let vCount = 0, iCount = 0;
+  const geos = list.map(m => { const g = m.geometry.clone(); g.applyMatrix4(m.matrixWorld); if (!g.index) { const n = g.attributes.position.count; g.setIndex(Array.from({ length: n }, (_, i) => i)); } vCount += g.attributes.position.count; iCount += g.index.count; return g; });
+  const pos = new Float32Array(vCount * 3), nor = new Float32Array(vCount * 3), uv = new Float32Array(vCount * 2), idx = new Uint32Array(iCount);
+  let vo = 0, io = 0;
+  for (const g of geos) {
+    const n = g.attributes.position.count;
+    pos.set(g.attributes.position.array, vo * 3);
+    if (g.attributes.normal) nor.set(g.attributes.normal.array, vo * 3);
+    if (g.attributes.uv) uv.set(g.attributes.uv.array, vo * 2);
+    const ia = g.index.array; for (let i = 0; i < ia.length; i++) idx[io + i] = ia[i] + vo;
+    vo += n; io += ia.length; g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3)); out.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  out.setIndex(new THREE.BufferAttribute(idx, 1)); out.computeBoundingSphere(); out.computeBoundingBox();
+  return out;
+}
+function mergeStatic() {
+  world.group.updateMatrixWorld(true);
+  const groups = new Map();
+  for (const m of world.group.children) {
+    if (!m.isMesh || !m.userData.mergeable || m.userData.barrel || m.material.transparent) continue;
+    const key = m.material.uuid + (m.castShadow ? 's' : 'n');
+    if (!groups.has(key)) groups.set(key, { mat: m.material, cast: m.castShadow, list: [] });
+    groups.get(key).list.push(m);
+  }
+  const ray = new Set(world.levelMeshes);
+  for (const g of groups.values()) {
+    if (g.list.length < 2) continue;
+    const mesh = new THREE.Mesh(mergeGeometries(g.list), g.mat); mesh.castShadow = g.cast; mesh.receiveShadow = true;
+    let hit = false;
+    for (const m of g.list) { world.group.remove(m); m.geometry.dispose(); if (ray.delete(m)) hit = true; }
+    world.group.add(mesh); if (hit) ray.add(mesh);
+  }
+  world.levelMeshes.length = 0; ray.forEach(m => world.levelMeshes.push(m));
+}
+
+// ---------------- interactive stations: mystery crate and overclock forge ----------------
+function freeSpotNear(x, z, r) {
+  for (let ring = 0; ring < 30; ring++) for (let k = 0; k < 12; k++) {
+    const a = k / 12 * Math.PI * 2, d = ring * 1.2, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
+    if (pointFree(px, pz, r, 0, 2.5) && groundAt(px, pz, 0.5) === (world.floor || 0)) return new V3(px, 0, pz);
+    if (ring === 0) break;
+  }
+  return new V3(x, 0, z);
+}
+function labelTex(text, color) { const [c, g] = cv(256, 128); g.fillStyle = '#0b1116'; g.fillRect(0, 0, 256, 128); g.strokeStyle = color; g.lineWidth = 6; g.strokeRect(6, 6, 244, 116); g.fillStyle = color; g.font = 'bold 34px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(text, 128, 66); return tex(c, 1, 1); }
+function buildStations(m) {
+  world.stations = [];
+  const [cx, cz] = m.crate || [-12, 24], [fx, fz] = m.forge || [12, -24];
+  // mystery crate
+  const cp = freeSpotNear(cx, cz, 1.4);
+  const crate = new THREE.Group(); crate.position.copy(cp); world.group.add(crate);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.9, 1), new THREE.MeshStandardMaterial({ color: 0x23303a, metalness: 0.7, roughness: 0.4 })); body.position.y = 0.45; body.castShadow = true; crate.add(body);
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(1.64, 0.14, 1.04), new THREE.MeshStandardMaterial({ color: 0x5ff2ff, emissive: 0x2ad0ff, emissiveIntensity: 0.8, metalness: 0.5, roughness: 0.3 })); lid.position.y = 0.97; crate.add(lid);
+  for (const s of [-1, 1]) { const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), new THREE.MeshBasicMaterial({ map: labelTex('? ? ?', '#5ff2ff') })); plate.position.set(0, 0.45, s * 0.505); if (s < 0) plate.rotation.y = Math.PI; crate.add(plate); }
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.7, 7, 16, 1, true), new THREE.MeshBasicMaterial({ color: 0x5ff2ff, transparent: true, opacity: 0.1, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); beam.position.y = 4.4; crate.add(beam);
+  addCollider(cp.x - 0.8, 0, cp.z - 0.5, cp.x + 0.8, 1.05, cp.z + 0.5, body);
+  world.levelMeshes.push(body);
+  world.stations.push({ type: 'crate', pos: cp, group: crate, lid, beam });
+  // overclock forge
+  const fp = freeSpotNear(fx, fz, 1.4);
+  const forge = new THREE.Group(); forge.position.copy(fp); world.group.add(forge);
+  const fb = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2.2, 1.1), new THREE.MeshStandardMaterial({ color: 0x2b2f35, metalness: 0.8, roughness: 0.35 })); fb.position.y = 1.1; fb.castShadow = true; forge.add(fb);
+  const rings = [];
+  for (let i = 0; i < 3; i++) { const r = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.05, 8, 24), new THREE.MeshBasicMaterial({ color: 0xff7a2e })); r.position.set(0, 1.25, 0.56 + i * 0.01); forge.add(r); rings.push(r); }
+  for (const s of [-1, 1]) { const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 0.5), new THREE.MeshBasicMaterial({ map: labelTex('OVERCLOCK', '#ff7a2e') })); plate.position.set(0, 2.0, s * 0.56); if (s < 0) plate.rotation.y = Math.PI; forge.add(plate); }
+  addCollider(fp.x - 0.75, 0, fp.z - 0.55, fp.x + 0.75, 2.2, fp.z + 0.55, fb);
+  world.levelMeshes.push(fb);
+  world.stations.push({ type: 'forge', pos: fp, group: forge, rings });
+  world.anim.push((dt, t) => { beam.material.opacity = 0.08 + Math.sin(t * 2) * 0.04; lid.material.emissiveIntensity = 0.6 + Math.sin(t * 3) * 0.3; rings.forEach((r, i) => { r.rotation.z = t * (1 + i * 0.6); r.scale.setScalar(1 + Math.sin(t * 2 + i) * 0.06); }); });
+}
+
 function disposeGroup(g) {
   g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(g);
@@ -371,6 +448,8 @@ function loadMap(id) {
   fill.intensity = th.fill; renderer.toneMappingExposure = th.exposure;
   const b = m.half + 12; Object.assign(sun.shadow.camera, { left: -b, right: b, top: b, bottom: -b }); sun.shadow.camera.updateProjectionMatrix();
   m.build();
+  buildStations(m);
+  mergeStatic();
   world.spawnPoints = m.spawns.map(([x, z]) => new V3(x, 0, z)).filter(p => pointFree(p.x, p.z, 1));
   world.playerSpawn.set(...m.playerSpawn);
   applyQuality();

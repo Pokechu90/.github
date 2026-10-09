@@ -60,6 +60,28 @@ Every boss kill pays a big coin reward and a guaranteed rare drop (an attachment
 - Pause
 - Game over, with wave, kills, headshots, accuracy, coins, XP and level progress
 
+**Round multipliers.** Every kill's score is multiplied by a running total shown on the HUD:
+- **Wave multiplier:** +0.1× per wave.
+- **Round modifiers:** from wave 3, some rounds roll a risk such as Armored, Swarm, Blackout, Volatile or Elite squad, with a bigger reward multiplier (up to ×1.45). Gold rush doubles coins instead.
+- **Combo:** each kill within 4 seconds of the last adds +0.1× (up to ×3). Taking a hit halves it.
+
+Coins and XP get a smaller share of the same multipliers.
+
+**Gunplay and feel** (from research into what makes shooters satisfying):
+- Learnable per-weapon recoil patterns.
+- Bots flinch and get knocked back; headshot kills pop the head off; a short hit-stop lands on headshot and boss kills.
+- Tactical reloads (with ammo left) are 20% faster than empty reloads.
+- Mantle up ledges.
+- Inspect your weapon.
+
+**Mystery crate and Overclock forge.** Every map has a mystery crate: 950 coins rolls a random weapon (including locked ones) for the rest of the run. The forge overclocks your current gun up to three tiers (+45% damage and +25% magazine per tier) with a glowing finish.
+
+**Daily challenges and leaderboards.** Three new challenges every day, and a personal top-5 for each map and difficulty.
+
+**Smoothness.** Static map geometry is merged (about half the draw calls), robot shadow casters and lights are trimmed, dynamic resolution keeps the frame rate up on slower GPUs, and there's an optional FPS counter.
+
+**Controller support** with aim slowdown over targets, plus settings for aiming sensitivity, toggle aim, and crosshair style, color and size.
+
 ## Controls
 | Key | Action |
 | --- | --- |
@@ -71,6 +93,9 @@ Every boss kill pays a big coin reward and a guaranteed rare drop (an attachment
 | G / F | Frag / stun grenade |
 | Z / X | Airstrike / auto-turret (when earned) |
 | T | Toggle red dot |
+| E | Use the mystery crate or overclock forge |
+| I | Inspect weapon |
+| Space at a ledge | Mantle |
 | B / Enter | Between waves: shop / start next wave |
 | Esc | Pause |
 

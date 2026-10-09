@@ -219,7 +219,7 @@ function decal(p, n, size = 0.16, scorch = false) {
 }
 function clearDecals() { decals.forEach(d => d.visible = false); scorches.forEach(d => d.visible = false); }
 const muzzleLight = new THREE.PointLight(0xffb060, 0, 14, 2); scene.add(muzzleLight);
-const boomLights = [0, 1, 2].map(() => { const l = new THREE.PointLight(0xff8a30, 0, 30, 1.6); scene.add(l); return { l, t: 0, peak: 12 }; });
+const boomLights = [0, 1].map(() => { const l = new THREE.PointLight(0xff8a30, 0, 30, 1.6); scene.add(l); return { l, t: 0, peak: 12 }; });
 let boomLightI = 0;
 function flashLight(p, color = 0xff8a30, peak = 12, dist = 30) { const L = boomLights[boomLightI++ % boomLights.length]; L.l.position.copy(p); L.l.color.setHex(color); L.l.distance = dist; L.t = 1; L.peak = peak; L.l.intensity = peak; }
 const ringGeo = new THREE.RingGeometry(0.85, 1, 48); const ballGeo = new THREE.SphereGeometry(1, 20, 14);

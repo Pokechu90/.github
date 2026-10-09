@@ -11,12 +11,14 @@ const ui = (() => {
     cross: E('crosshair'), chL: E('chL'), chR: E('chR'), chT: E('chT'), chB: E('chB'), hit: E('hit'), dmg: E('dmgDirs'), banner: E('banner'), bTitle: E('bannerTitle'), bSub: E('bannerSub'),
     streak: E('streak'), prompt: E('prompt'), vignette: E('vignette'), hurt: E('hurt'), stunFx: E('stunFx'), puFx: E('puFx'), scope: E('scope'), flash: E('flash'), feed: E('killfeed'), map: E('minimap'), lockHint: E('lockHint'),
     toasts: E('toasts'), powerups: E('powerups'), inter: E('interBar'), streakNum: E('streakNum'), streakReady: E('streakReady'), streakFill: E('streakFill'),
+    rmTotal: E('rmTotal'), rmParts: E('rmParts'), comboNum: E('comboNum'), comboFill: E('comboFill'),
     bossBar: E('bossBar'), bossName: E('bossName'), bossPhase: E('bossPhase'), bossFill: E('bossFill'), bossGhost: E('bossGhost'), bossShield: E('bossShield'),
   };
   const screens = { menu: E('menu'), play: E('play'), armory: E('armory'), quests: E('quests'), settings: E('settings'), pause: E('pause'), buffs: E('buffs'), over: E('over') };
   const cache = {};
   const setT = (el, key, v) => { if (cache[key] !== v) { cache[key] = v; el.textContent = v; } };
   const setH = (el, key, v) => { if (cache[key] !== v) { cache[key] = v; el.innerHTML = v; } };
+  let mapT = 0;
   let hurtA = 0, flashA = 0, promptT = 0, bannerT = 0, coinPopT = 0, coinPopN = 0, promptAuto = false;
 
   function show(name) { for (const k in screens) screens[k].hidden = k !== name; if (name) { const b = screens[name].querySelector('.btn.primary, .bcard, button'); if (b) setTimeout(() => { try { b.focus({ preventScroll: true }); } catch (e) {} }, 30); } }
@@ -79,7 +81,7 @@ const ui = (() => {
     h.arFill.style.transform = `scaleX(${player.armor / 100})`; setT(h.arNum, 'ar', String(Math.ceil(player.armor)));
     const need = xpForLevel(profile.level);
     setT(h.hudLvl, 'lvl', `LV ${profile.level}`); h.hudXp.style.transform = `scaleX(${profile.xp / need})`; setT(h.hudXpTxt, 'xp', `${fmt(profile.xp)} / ${fmt(need)}`);
-    setT(h.wName, 'wn', W.name); setT(h.wMode, 'wm', W.mode);
+    setT(h.wName, 'wn', W.name + (rt.oc ? ` · OC ${['', 'I', 'II', 'III'][rt.oc]}` : '')); setT(h.wMode, 'wm', W.mode);
     setT(h.wAtt, 'wa', ATT_IDS.filter(a => attOn(W.id, a)).map(a => ATTACHMENTS[a].short).join(' · '));
     const inf = mods.infinite;
     setT(h.mag, 'mag', String(st.mag)); setT(h.res, 'res', inf ? '/ ∞' : '/ ' + st.reserve);
@@ -87,13 +89,20 @@ const ui = (() => {
     setT(h.frag, 'fr', String(player.frags)); setT(h.stun, 'stn', String(player.stuns));
     const slotKey = loadout.map(id => id).join(',') + '|' + (G.switchTo >= 0 ? G.switchTo : G.cur);
     if (cache.slots !== slotKey) { cache.slots = slotKey; h.slots.innerHTML = loadout.map((id, i) => `<div class="${i === (G.switchTo >= 0 ? G.switchTo : G.cur) ? 'on' : ''}">${i + 1} <span>${WEAPON_BY_ID[id].name}</span></div>`).join(''); }
-    if (G.reloading) { h.reloadBar.style.opacity = 1; const t = W.shellReload ? st.mag / rt.mag : G.reloadT / rt.reload; h.reloadFill.style.transform = `scaleX(${clamp(t, 0, 1)})`; } else h.reloadBar.style.opacity = 0;
+    if (G.reloading) { h.reloadBar.style.opacity = 1; const t = W.shellReload ? st.mag / rt.mag : G.reloadT / G.reloadDur; h.reloadFill.style.transform = `scaleX(${clamp(t, 0, 1)})`; } else h.reloadBar.style.opacity = 0;
     setT(h.wave, 'wave', String(run.wave));
     if (waves.active) { setT(h.hostLbl, 'hl', 'Hostiles'); setT(h.host, 'hn', String(enemies.length + waves.queue.length)); }
     else { setT(h.hostLbl, 'hl', 'Next wave'); setT(h.host, 'hn', Math.ceil(Math.max(0, waves.inter)) + 's'); }
     setT(h.kills, 'k', String(run.kills)); setT(h.score, 's', fmt(run.score)); setT(h.coin, 'c', fmt(profile.coins));
-    setT(h.mult, 'm', run.multiT > 0 && run.multi > 1 ? `×${(1 + Math.min(run.multi - 1, 4) * 0.25).toFixed(2)} multi-kill` : '');
+    setT(h.mult, 'm', run.multiT > 0 && run.multi > 1 ? `Multi-kill · ${run.multi} in a row` : '');
     coinPopT -= dt; if (coinPopT <= 0 && coinPopN) { coinPopN = 0; h.coinPop.style.opacity = 0; }
+    // round multiplier: wave × modifier × combo
+    const rm = roundMults(), mu = run.mutator && MUTATORS[run.mutator];
+    const tot = '×' + rm.total.toFixed(rm.total < 10 ? 2 : 1);
+    if (cache.rmt !== tot) { cache.rmt = tot; h.rmTotal.textContent = tot; h.rmTotal.classList.remove('bump'); void h.rmTotal.offsetWidth; h.rmTotal.classList.add('bump'); setTimeout(() => h.rmTotal.classList.remove('bump'), 150); }
+    setH(h.rmParts, 'rmp', `Wave ×${rm.wave.toFixed(1)}${mu ? ` · ${escapeHtml(mu.name)} ×${mu.reward}` : ''}<br>Combo ×${rm.combo.toFixed(1)}`);
+    setT(h.comboNum, 'cn', String(run.combo));
+    h.comboFill.style.width = `${run.combo ? clamp(run.comboT / COMBO_WINDOW, 0, 1) * 100 : 0}%`;
     // buffs
     const bk = Object.entries(run.buffs).map(([k, n]) => k + n).join();
     if (cache.buffs !== bk) { cache.buffs = bk; h.buffRow.innerHTML = Object.entries(run.buffs).map(([k, n]) => `<div class="bic" title="${escapeHtml(BUFFS[k].name + ': ' + BUFFS[k].desc)}">${buffIcon(k)}${n > 1 ? `<em>${n}</em>` : ''}</div>`).join(''); }
@@ -119,7 +128,9 @@ const ui = (() => {
     } else h.bossBar.hidden = true;
     // crosshair
     const spread = currentSpread();
-    const gap = Math.tan(spread) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * innerHeight / 2 + 4;
+    const gap = (Math.tan(spread) / Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * innerHeight / 2 + 4) * settings.xhSize;
+    const xk = settings.xhStyle + settings.xhColor + settings.xhSize;
+    if (cache.xh !== xk) { cache.xh = xk; h.cross.className = settings.xhStyle; h.cross.style.setProperty('--xh', settings.xhColor); h.cross.querySelectorAll('.h').forEach(e => e.style.width = 10 * settings.xhSize + 'px'); h.cross.querySelectorAll('.v').forEach(e => e.style.height = 10 * settings.xhSize + 'px'); }
     h.chL.style.transform = `translateX(${-gap - 10}px)`; h.chR.style.transform = `translateX(${gap}px)`; h.chT.style.transform = `translateY(${-gap - 10}px)`; h.chB.style.transform = `translateY(${gap}px)`;
     h.cross.style.opacity = (G.ads > 0.5 || VMS.sprint > 0.5 || !player.alive) ? 0 : 1;
     // screen fx
@@ -130,12 +141,14 @@ const ui = (() => {
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) h.banner.classList.remove('show'); }
     if (promptT > 0) { promptT -= dt; if (promptT <= 0) { h.prompt.classList.remove('show'); promptAuto = true; } }
     else if (player.alive) {
-      if (st.mag === 0 && st.reserve === 0 && !inf) prompt('Out of ammo · switch weapon or buy ammo', true);
+      const sp = stationPrompt();
+      if (sp) prompt(sp, false);
+      else if (st.mag === 0 && st.reserve === 0 && !inf) prompt('Out of ammo · switch weapon or buy ammo', true);
       else if (st.mag <= Math.ceil(rt.mag * 0.25) && !G.reloading && st.reserve > 0) prompt('R · Reload', false);
       else if (promptAuto) h.prompt.classList.remove('show');
     }
     h.lockHint.hidden = locked || !player.alive || state !== 'playing';
-    drawMap();
+    mapT -= dt; if (mapT <= 0) { mapT = 1 / 24; drawMap(); }
   }
 
   // ---------------- main menu ----------------
@@ -158,12 +171,17 @@ const ui = (() => {
     E('questCount').textContent = `${questsDoneCount()} / ${QUESTS.length} done`;
   }
 
+  function renderBoard(el, map, diff, highlight) {
+    const list = profile.board[boardKey(map, diff)] || [];
+    el.innerHTML = list.length ? list.map((r, i) => `<div class="br${i === highlight ? ' me' : ''}"><span>${i + 1}</span><b>${fmt(r.score)}</b><span>wave ${r.wave}</span><span>${fmt(r.kills)} kills</span></div>`).join('') : '<div class="empty">No runs yet on this map and difficulty.</div>';
+  }
   // ---------------- play setup ----------------
   function openPlay() {
     if (!mapUnlocked(MAP_BY_ID[profile.map])) profile.map = 'yard';
     E('mapCards').innerHTML = MAPS.map(m => { const ok = mapUnlocked(m); return `<button class="card${m.id === profile.map ? ' on' : ''}${ok ? '' : ' locked'}" data-map="${m.id}" ${ok ? '' : 'aria-disabled="true"'}><div class="sw" style="background:${m.swatch}"></div><div class="ct"><b>${escapeHtml(m.name)}</b><span>${escapeHtml(ok ? m.desc : mapUnlockText(m))}</span></div></button>`; }).join('');
     E('diffCards').innerHTML = Object.entries(DIFFICULTY).map(([k, d]) => `<button class="card${k === profile.difficulty ? ' on' : ''}" data-diff="${k}"><div class="ct"><b>${d.label}</b><span>${escapeHtml(d.desc)}</span></div></button>`).join('');
     E('deploySub').textContent = `${MAP_BY_ID[profile.map].name} · ${DIFFICULTY[profile.difficulty].label}`;
+    renderBoard(E('playBoard'), profile.map, profile.difficulty, -1);
     show('play');
   }
   E('mapCards').addEventListener('click', e => { const c = e.target.closest('[data-map]'); if (!c) return; const m = MAP_BY_ID[c.dataset.map]; if (!mapUnlocked(m)) { SFX.deny(); return; } SFX.ui(); profile.map = m.id; saveProfile(); openPlay(); });
@@ -278,6 +296,8 @@ const ui = (() => {
   let questBack = 'menu';
   function openQuests(back = 'menu') {
     questBack = back;
+    const dq = ensureDaily();
+    E('dailyList').innerHTML = dq.map(d => { const t = dailyDef(d); if (!t) return ''; return `<div class="quest${d.done ? ' done' : ''}"><div class="qh"><b>${escapeHtml(t.name)}</b><span class="rw">${t.reward} coins · 200 XP</span></div><p>${escapeHtml(t.desc(d.goal))}</p><div class="qbar"><i style="width:${(Math.min(d.p, d.goal) / d.goal * 100).toFixed(1)}%"></i></div><span class="qp">${d.done ? 'Complete' : `${fmt(d.p)} / ${fmt(d.goal)}`}</span></div>`; }).join('');
     E('questList').innerHTML = QUESTS.map(q => { const s = questState(q.id); const p = Math.min(s.p, q.goal); return `<div class="quest${s.done ? ' done' : ''}"><div class="qh"><b>${escapeHtml(q.name)}</b><span class="rw">${escapeHtml(rewardText(q.reward))}</span></div><p>${escapeHtml(q.desc)}</p><div class="qbar"><i style="width:${(p / q.goal * 100).toFixed(1)}%"></i></div><span class="qp">${s.done ? 'Complete' : `${fmt(p)} / ${fmt(q.goal)}`}</span></div>`; }).join('');
     show('quests');
   }
@@ -285,18 +305,24 @@ const ui = (() => {
 
   // ---------------- settings ----------------
   let settingsBack = 'menu';
-  const sEl = { sens: E('sSens'), fov: E('sFov'), vol: E('sVol'), music: E('sMusic'), dmg: E('sDmg'), invert: E('sInvert') };
+  const sEl = { sens: E('sSens'), ads: E('sAds'), pad: E('sPad'), toggleAds: E('sToggleAds'), xhSize: E('sXhSize'), fov: E('sFov'), vol: E('sVol'), music: E('sMusic'), dyn: E('sDyn'), fps: E('sFps'), dmg: E('sDmg'), invert: E('sInvert') };
   function syncSettings() {
+    sEl.ads.value = settings.adsSens; sEl.pad.value = settings.padSens; sEl.toggleAds.checked = settings.toggleAds; sEl.xhSize.value = settings.xhSize; sEl.dyn.checked = settings.dynRes; sEl.fps.checked = settings.fpsCounter;
+    E('oAds').textContent = (+settings.adsSens).toFixed(2) + '×'; E('oPad').textContent = (+settings.padSens).toFixed(2) + '×'; E('oXhSize').textContent = (+settings.xhSize).toFixed(1) + '×';
+    E('sXh').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.xh === settings.xhStyle)); E('sXhColor').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.c === settings.xhColor));
     sEl.sens.value = settings.sens; sEl.fov.value = settings.fov; sEl.vol.value = settings.vol; sEl.music.value = settings.music; sEl.dmg.checked = settings.dmgNumbers; sEl.invert.checked = settings.invert;
     E('oSens').textContent = (+settings.sens).toFixed(2); E('oFov').textContent = settings.fov + '°'; E('oVol').textContent = Math.round(settings.vol * 100) + '%'; E('oMusic').textContent = Math.round(settings.music * 100) + '%';
     E('sQuality').querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c.dataset.q === settings.quality));
   }
   function applySettingsUI() {
+    settings.adsSens = +sEl.ads.value; settings.padSens = +sEl.pad.value; settings.toggleAds = sEl.toggleAds.checked; settings.xhSize = +sEl.xhSize.value; settings.dynRes = sEl.dyn.checked; settings.fpsCounter = sEl.fps.checked;
     settings.sens = +sEl.sens.value; settings.fov = +sEl.fov.value; settings.vol = +sEl.vol.value; settings.music = +sEl.music.value; settings.dmgNumbers = sEl.dmg.checked; settings.invert = sEl.invert.checked;
     SFX.setVolumes(); saveSettings(); syncSettings();
     if (!settings.dmgNumbers) hideDamageNumbers();
   }
   Object.values(sEl).forEach(el => el.addEventListener('input', applySettingsUI));
+  E('sXh').addEventListener('click', e => { const c = e.target.closest('[data-xh]'); if (!c) return; settings.xhStyle = c.dataset.xh; saveSettings(); syncSettings(); SFX.ui(); });
+  E('sXhColor').addEventListener('click', e => { const c = e.target.closest('[data-c]'); if (!c) return; settings.xhColor = c.dataset.c; saveSettings(); syncSettings(); SFX.ui(); });
   E('sQuality').addEventListener('click', e => { const c = e.target.closest('[data-q]'); if (!c) return; settings.quality = c.dataset.q; saveSettings(); applyQuality(); syncSettings(); SFX.ui(); });
   function openSettings(back = 'menu') { settingsBack = back; syncSettings(); show('settings'); }
   E('btnSetBack').addEventListener('click', () => { SFX.ui(); show(settingsBack); if (settingsBack === 'menu') renderProfile(); });
@@ -328,7 +354,10 @@ const ui = (() => {
     if (s.drops.length) lines.push(`Rare drops: <b>${s.drops.map(escapeHtml).join(', ')}</b>`);
     const newMaps = MAPS.filter(m => m.unlock && mapUnlocked(m) && !s.mapsBefore.includes(m.id)).map(m => m.name);
     if (newMaps.length) lines.push(`New map unlocked: <b>${newMaps.map(escapeHtml).join(', ')}</b>`);
+    if (s.bestCombo > 1) lines.unshift(`Best combo: <b>${s.bestCombo} kills</b>`);
+    if (s.rank >= 0) lines.unshift(`Leaderboard: <b>#${s.rank + 1}</b> on ${escapeHtml(s.map)} (${escapeHtml(s.diff)})`);
     E('overList').innerHTML = lines.join('<br>');
+    E('oBoardLbl').textContent = `${s.map} · ${s.diff}`; renderBoard(E('overBoard'), s.mapId, s.diffId, s.rank);
     show('over');
   }
 
