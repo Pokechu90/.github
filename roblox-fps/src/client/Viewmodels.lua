@@ -1,75 +1,111 @@
+--!nonstrict
 -- First-person weapon models built from parts. Laid out in meters (x right, y up, -z forward)
--- and scaled to studs. Each frame the client places every part relative to the camera.
+-- and scaled to studs. Each gun is rebuilt when its skin or attachments change; every frame the
+-- client places each part relative to the camera.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Config = require(ReplicatedStorage:WaitForChild("FoundryShared"):WaitForChild("Config"))
+local Shared = ReplicatedStorage:WaitForChild("FoundryShared")
+local Config = require(Shared:WaitForChild("Config"))
+local Stats = require(Shared:WaitForChild("Stats"))
 
 local S = Config.METER
 local Viewmodels = {}
+local RGB = Color3.fromRGB
 
-local MAT = {
-	metal = { Color3.fromRGB(43, 48, 54), Enum.Material.Metal },
-	poly = { Color3.fromRGB(27, 30, 33), Enum.Material.SmoothPlastic },
-	tan = { Color3.fromRGB(122, 106, 76), Enum.Material.SmoothPlastic },
-	accent = { Color3.fromRGB(245, 165, 36), Enum.Material.SmoothPlastic },
-	glove = { Color3.fromRGB(26, 24, 22), Enum.Material.Fabric },
-	sleeve = { Color3.fromRGB(33, 38, 29), Enum.Material.Fabric },
-	dot = { Color3.fromRGB(255, 42, 26), Enum.Material.Neon },
-	lens = { Color3.fromRGB(58, 122, 176), Enum.Material.Glass },
+local FIXED = {
+	glove = { RGB(26, 24, 22), Enum.Material.Fabric },
+	sleeve = { RGB(30, 34, 27), Enum.Material.Fabric },
+	dot = { RGB(255, 42, 26), Enum.Material.Neon },
+	lens = { RGB(58, 122, 176), Enum.Material.Glass },
+	glass = { RGB(154, 212, 255), Enum.Material.Glass },
+	laser = { RGB(255, 42, 26), Enum.Material.Neon },
+	cyan = { RGB(108, 246, 255), Enum.Material.Neon },
 }
 
-local function newGun(def)
-	local model = Instance.new("Model")
-	model.Name = "VM_" .. def.id
-	return { def = def, model = model, parts = {}, subs = {} }
+local function materials(skin)
+	local s = Config.Skins[skin] or Config.Skins.stock
+	return {
+		metal = { s.metal, s.shiny and Enum.Material.Foil or Enum.Material.Metal },
+		poly = { s.poly, Enum.Material.SmoothPlastic },
+		alt = { s.alt, Enum.Material.SmoothPlastic },
+		accent = { s.accent, s.glow and Enum.Material.Neon or Enum.Material.SmoothPlastic },
+	}
 end
 
+local function newGun(def, skin)
+	local model = Instance.new("Model")
+	model.Name = "VM_" .. def.id
+	return { def = def, model = model, parts = {}, mats = materials(skin), nodes = {} }
+end
+
+-- parent: optional node returned by bx/cy; offsets are then relative to it
 local function add(g, p, off, sub)
 	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
 	p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
 	p.Parent = g.model
-	table.insert(g.parts, { p = p, off = off, sub = sub })
-	return p
+	local e = { p = p, off = off, sub = sub, size = p.Size }
+	table.insert(g.parts, e)
+	return e
 end
-
-local function bx(g, w, h, d, mat, x, y, z, rot, sub)
+local function look(g, mat)
+	return g.mats[mat] or FIXED[mat]
+end
+local function bx(g, w, h, d, mat, x, y, z, opts)
+	opts = opts or {}
 	local p = Instance.new("Part")
-	p.Size = Vector3.new(math.max(w * S, 0.02), math.max(h * S, 0.02), math.max(d * S, 0.02))
-	p.Color, p.Material = MAT[mat][1], MAT[mat][2]
-	if mat == "lens" then p.Transparency = 0.75 end
-	return add(g, p, CFrame.new(x * S, y * S, z * S) * (rot or CFrame.identity), sub)
+	p.Size = Vector3.new(math.max(w * S, 0.01), math.max(h * S, 0.01), math.max(d * S, 0.01))
+	local m = look(g, mat)
+	p.Color, p.Material = m[1], m[2]
+	if mat == "lens" then p.Transparency = 0.7 elseif mat == "glass" then p.Transparency = 0.86 end
+	local off = CFrame.new(x * S, y * S, z * S) * (opts.rot or CFrame.identity)
+	if opts.parent then off = opts.parent.off * off end
+	return add(g, p, off, opts.sub or (opts.parent and opts.parent.sub))
 end
-
-local function cyl(g, r, len, mat, x, y, z, sub)
+local function cy(g, r, len, mat, x, y, z, opts)
+	opts = opts or {}
 	local p = Instance.new("Part")
 	p.Shape = Enum.PartType.Cylinder
 	p.Size = Vector3.new(len * S, r * 2 * S, r * 2 * S)
-	p.Color, p.Material = MAT[mat][1], MAT[mat][2]
-	return add(g, p, CFrame.new(x * S, y * S, z * S) * CFrame.Angles(0, math.pi / 2, 0), sub)
+	local m = look(g, mat)
+	p.Color, p.Material = m[1], m[2]
+	local off = CFrame.new(x * S, y * S, z * S) * CFrame.Angles(0, math.pi / 2, 0)
+	if opts.parent then off = opts.parent.off * off end
+	return add(g, p, off, opts.sub or (opts.parent and opts.parent.sub))
+end
+local function ring(g, r, mat, x, y, z)
+	local p = Instance.new("Part")
+	p.Shape = Enum.PartType.Cylinder
+	p.Size = Vector3.new(0.012 * S, r * 2 * S, r * 2 * S)
+	local m = look(g, mat)
+	p.Color, p.Material = m[1], m[2]
+	p.Transparency = 0.2
+	return add(g, p, CFrame.new(x * S, y * S, z * S) * CFrame.Angles(0, math.pi / 2, 0))
 end
 
 local function arms(g, gripZ, foreZ, foreY)
 	bx(g, 0.055, 0.09, 0.09, "glove", 0.012, -0.07, gripZ)
-	bx(g, 0.085, 0.085, 0.42, "sleeve", 0.06, -0.14, gripZ + 0.22, CFrame.Angles(0.35, 0.2, 0))
+	bx(g, 0.08, 0.08, 0.28, "sleeve", 0.05, -0.12, gripZ + 0.15, { rot = CFrame.Angles(0.35, 0.2, 0) })
 	if foreZ then
 		bx(g, 0.06, 0.06, 0.1, "glove", -0.01, foreY - 0.05, foreZ)
-		bx(g, 0.085, 0.085, 0.45, "sleeve", -0.14, foreY - 0.14, foreZ + 0.2, CFrame.Angles(0.3, -0.55, 0))
+		bx(g, 0.08, 0.08, 0.34, "sleeve", -0.11, foreY - 0.12, foreZ + 0.15, { rot = CFrame.Angles(0.3, -0.55, 0) })
 	end
 end
 
-local function muzzle(g, z, y)
+local function muzzle(g, y, z)
 	local p = Instance.new("Part")
-	p.Size = Vector3.new(0.1, 0.1, 0.1)
+	p.Size = Vector3.new(0.05, 0.05, 0.05)
 	p.Transparency = 1
-	add(g, p, CFrame.new(0, y * S, z * S))
+	g.muzzleEntry = add(g, p, CFrame.new(0, y * S, z * S))
 	local att = Instance.new("Attachment")
-	att.CFrame = CFrame.Angles(0, 0, 0)
 	att.Parent = p
+	local def = g.def
+	local tint = def.flashColor or RGB(255, 230, 170)
 	local flash = Instance.new("ParticleEmitter")
 	flash.Texture = Config.Textures.Spark
 	flash.LightEmission = 1
 	flash.LightInfluence = 0
-	flash.Color = ColorSequence.new(Color3.fromRGB(255, 230, 170), Color3.fromRGB(255, 120, 30))
-	flash.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, g.def.flashSize), NumberSequenceKeypoint.new(1, g.def.flashSize * 0.4) })
+	flash.Color = ColorSequence.new(tint, def.flashColor or RGB(255, 120, 30))
+	local size = def.flashSize * (g.silenced and 0.4 or 1)
+	flash.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, size * 0.4) })
 	flash.Transparency = NumberSequence.new(0)
 	flash.Lifetime = NumberRange.new(0.05)
 	flash.Speed = NumberRange.new(0)
@@ -80,103 +116,195 @@ local function muzzle(g, z, y)
 	flash.Parent = att
 	local core = flash:Clone()
 	core.Texture = Config.Textures.Fire
-	core.Size = NumberSequence.new(g.def.flashSize * 0.7)
+	core.Size = NumberSequence.new(size * 0.7)
 	core.Parent = att
 	local light = Instance.new("PointLight")
-	light.Color = Color3.fromRGB(255, 170, 90)
-	light.Range = 14
-	light.Brightness = 4
+	light.Color = def.flashColor or RGB(255, 170, 90)
+	light.Range = g.silenced and 6 or 14
+	light.Brightness = g.silenced and 1.5 or 4
 	light.Enabled = false
 	light.Parent = p
 	g.muzzle, g.flash, g.flashCore, g.light = p, flash, core, light
 end
 
-local builders = {}
-
-function builders.pistol(g)
-	bx(g, 0.034, 0.036, 0.19, "metal", 0, 0.018, -0.03, nil, "slide")
-	bx(g, 0.035, 0.012, 0.05, "poly", 0, 0.023, 0, nil, "slide")
-	bx(g, 0.03, 0.028, 0.17, "poly", 0, -0.012, -0.03)
-	bx(g, 0.03, 0.1, 0.048, "poly", 0, -0.07, 0.045, CFrame.Angles(-0.22, 0, 0))
-	bx(g, 0.006, 0.01, 0.006, "dot", 0, 0.041, -0.115, nil, "slide")
-	bx(g, 0.02, 0.008, 0.008, "metal", 0, 0.04, 0.055, nil, "slide")
-	bx(g, 0.024, 0.012, 0.03, "accent", 0, -0.03, -0.02)
-	arms(g, 0.05, 0.02, -0.04)
-	muzzle(g, -0.135, 0.02)
-	g.hip, g.ads = Vector3.new(0.15, -0.15, -0.4), Vector3.new(0, -0.041, -0.42)
+-- shared attachment points and arms
+local function finish(g, o, on)
+	g.o = o
+	if on.reddot then
+		local rd = { off = CFrame.new(0, o.rail[2] * S, o.rail[3] * S) }
+		bx(g, 0.036, 0.008, 0.06, "metal", 0, 0.004, 0, { parent = rd })
+		bx(g, 0.005, 0.034, 0.012, "metal", -0.018, 0.021, -0.02, { parent = rd })
+		bx(g, 0.005, 0.034, 0.012, "metal", 0.018, 0.021, -0.02, { parent = rd })
+		bx(g, 0.041, 0.005, 0.012, "metal", 0, 0.04, -0.02, { parent = rd })
+		bx(g, 0.012, 0.01, 0.02, "accent", 0.022, 0.012, 0.01, { parent = rd })
+		bx(g, 0.031, 0.03, 0.001, "glass", 0, 0.022, -0.02, { parent = rd })
+		bx(g, 0.0045, 0.0045, 0.001, "dot", 0, 0.022, -0.0215, { parent = rd })
+	end
+	local mz = o.muzzleZ
+	if on.silencer then
+		cy(g, 0.021, 0.17, "poly", 0, o.muzzleY, mz - 0.085)
+		cy(g, 0.023, 0.02, "metal", 0, o.muzzleY, mz - 0.005)
+		mz -= 0.17
+	end
+	if on.grip then
+		bx(g, 0.03, 0.075, 0.035, "poly", 0, o.underY - 0.04, o.underZ)
+		bx(g, 0.035, 0.01, 0.045, "metal", 0, o.underY, o.underZ)
+	end
+	if on.laser then
+		bx(g, 0.018, 0.022, 0.06, "metal", 0.034, o.underY + 0.02, o.underZ - 0.03)
+		g.laserEntry = bx(g, 0.01, 0.01, 0.004, "laser", 0.034, o.underY + 0.02, o.underZ - 0.061)
+	end
+	muzzle(g, o.muzzleY, mz)
+	arms(g, o.gripZ, o.foreZ, o.foreY)
+	g.hip = o.hip * S
+	g.ads = Vector3.new(0, -(on.reddot and o.rail[2] + 0.022 or o.sightY), o.adsZ) * S
+	if g.mag and on.extmag then
+		-- a tube magazine is a cylinder, whose length runs along X
+		g.mag.p.Size = g.tube and Vector3.new(g.mag.size.X * 1.18, g.mag.size.Y, g.mag.size.Z) or Vector3.new(g.mag.size.X, g.mag.size.Y * 1.45, g.mag.size.Z)
+		if not g.tube then g.mag.off *= CFrame.new(0, -g.mag.size.Y * 0.225, 0) end
+	end
 end
 
-function builders.rifle(g)
+local V3 = Vector3.new
+local B = {}
+
+function B.pistol(g)
+	local slide = bx(g, 0.034, 0.036, 0.19, "metal", 0, 0.018, -0.03, { sub = "slide" })
+	bx(g, 0.035, 0.012, 0.05, "poly", 0, 0.005, 0.03, { parent = slide })
+	bx(g, 0.03, 0.028, 0.17, "poly", 0, -0.012, -0.03)
+	bx(g, 0.03, 0.1, 0.048, "poly", 0, -0.07, 0.045, { rot = CFrame.Angles(-0.22, 0, 0) })
+	bx(g, 0.004, 0.01, 0.006, "dot", 0, 0.041, -0.115, { sub = "slide" })
+	bx(g, 0.02, 0.008, 0.008, "metal", 0, 0.04, 0.055, { sub = "slide" })
+	bx(g, 0.024, 0.012, 0.03, "accent", 0, -0.03, -0.02)
+	g.mag = bx(g, 0.026, 0.02, 0.04, "alt", 0, -0.125, 0.052, { sub = "mag" })
+	return { sightY = 0.041, rail = { 0, 0.036, 0.0 }, muzzleY = 0.02, muzzleZ = -0.135, underY = -0.03, underZ = -0.08, gripZ = 0.05, foreZ = 0.02, foreY = -0.04, hip = V3(0.15, -0.15, -0.4), adsZ = -0.46 }
+end
+
+function B.smg(g)
+	bx(g, 0.05, 0.06, 0.26, "metal", 0, 0, -0.04)
+	local shroud = bx(g, 0.046, 0.046, 0.13, "poly", 0, 0.004, -0.23)
+	for i = 0, 3 do bx(g, 0.048, 0.012, 0.012, "metal", 0, 0.012, -0.045 + i * 0.03, { parent = shroud }) end
+	cy(g, 0.01, 0.08, "metal", 0, 0.004, -0.33)
+	g.mag = bx(g, 0.026, 0.19, 0.04, "poly", 0, -0.12, -0.08, { sub = "mag" })
+	bx(g, 0.027, 0.02, 0.041, "accent", 0, -0.2, -0.08, { sub = "mag" })
+	bx(g, 0.032, 0.09, 0.04, "poly", 0, -0.07, 0.05, { rot = CFrame.Angles(-0.25, 0, 0) })
+	bx(g, 0.012, 0.012, 0.18, "metal", 0.018, -0.005, 0.17); bx(g, 0.012, 0.012, 0.18, "metal", -0.018, -0.005, 0.17); bx(g, 0.05, 0.05, 0.012, "poly", 0, -0.015, 0.26)
+	bx(g, 0.014, 0.012, 0.18, "metal", 0, 0.034, -0.05); bx(g, 0.004, 0.012, 0.006, "metal", 0, 0.045, -0.13); bx(g, 0.02, 0.012, 0.006, "metal", 0, 0.045, 0.03)
+	bx(g, 0.02, 0.02, 0.05, "metal", 0.03, 0.01, -0.02, { sub = "slide" })
+	return { sightY = 0.047, rail = { 0, 0.04, -0.03 }, muzzleY = 0.004, muzzleZ = -0.37, underY = -0.02, underZ = -0.22, gripZ = 0.05, foreZ = -0.08, foreY = -0.2, hip = V3(0.15, -0.15, -0.42), adsZ = -0.52 }
+end
+
+function B.rifle(g)
 	bx(g, 0.06, 0.07, 0.36, "metal", 0, 0, -0.06)
 	bx(g, 0.07, 0.068, 0.24, "poly", 0, 0.002, -0.35)
 	for i = 0, 4 do bx(g, 0.072, 0.01, 0.02, "metal", 0, 0.038, -0.26 - i * 0.04) end
-	cyl(g, 0.012, 0.22, "metal", 0, 0.005, -0.56)
-	cyl(g, 0.02, 0.06, "poly", 0, 0.005, -0.66)
-	bx(g, 0.036, 0.15, 0.07, "poly", 0, -0.1, -0.1, CFrame.Angles(0.18, 0, 0), "mag")
-	bx(g, 0.037, 0.02, 0.071, "accent", 0, -0.165, -0.088, CFrame.Angles(0.18, 0, 0), "mag")
-	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.08, 0.06, CFrame.Angles(-0.3, 0, 0))
-	bx(g, 0.05, 0.075, 0.22, "poly", 0, -0.01, 0.22)
-	bx(g, 0.052, 0.1, 0.05, "poly", 0, -0.02, 0.32)
+	cy(g, 0.012, 0.22, "metal", 0, 0.005, -0.56); cy(g, 0.02, 0.06, "poly", 0, 0.005, -0.66)
+	g.mag = bx(g, 0.036, 0.15, 0.07, "poly", 0, -0.1, -0.1, { rot = CFrame.Angles(0.18, 0, 0), sub = "mag" })
+	bx(g, 0.037, 0.02, 0.071, "accent", 0, -0.065, 0, { parent = g.mag })
+	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.08, 0.06, { rot = CFrame.Angles(-0.3, 0, 0) })
+	bx(g, 0.05, 0.075, 0.22, "poly", 0, -0.01, 0.22); bx(g, 0.052, 0.1, 0.05, "poly", 0, -0.02, 0.32)
 	bx(g, 0.02, 0.012, 0.3, "metal", 0, 0.041, -0.08)
-	bx(g, 0.042, 0.012, 0.08, "metal", 0, 0.05, -0.06)
-	bx(g, 0.006, 0.05, 0.08, "metal", -0.018, 0.075, -0.06)
-	bx(g, 0.006, 0.05, 0.08, "metal", 0.018, 0.075, -0.06)
-	bx(g, 0.042, 0.008, 0.08, "metal", 0, 0.1, -0.06)
-	bx(g, 0.03, 0.035, 0.004, "lens", 0, 0.074, -0.1)
-	bx(g, 0.006, 0.006, 0.004, "dot", 0, 0.074, -0.102)
+	bx(g, 0.006, 0.02, 0.008, "metal", 0, 0.056, -0.42); bx(g, 0.024, 0.018, 0.01, "metal", 0, 0.056, 0.05)
 	bx(g, 0.015, 0.02, 0.04, "accent", 0.035, 0.005, -0.04)
-	arms(g, 0.06, -0.33, -0.03)
-	muzzle(g, -0.7, 0.005)
-	g.hip, g.ads = Vector3.new(0.17, -0.18, -0.5), Vector3.new(0, -0.074, -0.5)
+	bx(g, 0.012, 0.012, 0.03, "metal", 0.034, 0.02, 0.0, { sub = "slide" })
+	return { sightY = 0.062, rail = { 0, 0.047, -0.08 }, muzzleY = 0.005, muzzleZ = -0.7, underY = -0.035, underZ = -0.38, gripZ = 0.06, foreZ = -0.3, foreY = -0.03, hip = V3(0.17, -0.18, -0.5), adsZ = -0.62 }
 end
 
-function builders.shotgun(g)
+function B.burst(g)
+	bx(g, 0.064, 0.085, 0.5, "poly", 0, 0, 0.02)
+	bx(g, 0.066, 0.02, 0.44, "accent", 0, -0.035, 0.02)
+	cy(g, 0.013, 0.2, "metal", 0, 0.012, -0.33); cy(g, 0.022, 0.05, "metal", 0, 0.012, -0.44)
+	bx(g, 0.03, 0.03, 0.34, "metal", 0, 0.056, -0.02)
+	g.mag = bx(g, 0.036, 0.13, 0.065, "metal", 0, -0.1, 0.13, { sub = "mag" })
+	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.085, -0.06, { rot = CFrame.Angles(-0.3, 0, 0) })
+	bx(g, 0.04, 0.02, 0.1, "metal", 0, -0.05, -0.1)
+	bx(g, 0.006, 0.018, 0.008, "metal", 0, 0.08, -0.17); bx(g, 0.024, 0.016, 0.01, "metal", 0, 0.08, 0.1)
+	return { sightY = 0.086, rail = { 0, 0.071, -0.04 }, muzzleY = 0.012, muzzleZ = -0.47, underY = -0.045, underZ = -0.2, gripZ = -0.06, foreZ = -0.22, foreY = -0.04, hip = V3(0.16, -0.18, -0.46), adsZ = -0.6 }
+end
+
+function B.shotgun(g)
 	bx(g, 0.064, 0.075, 0.3, "metal", 0, 0, -0.04)
-	cyl(g, 0.017, 0.52, "metal", 0, 0.018, -0.44)
-	cyl(g, 0.014, 0.42, "metal", 0, -0.022, -0.39)
-	bx(g, 0.058, 0.052, 0.17, "tan", 0, -0.022, -0.34, nil, "pump")
-	for i = 0, 5 do bx(g, 0.06, 0.006, 0.01, "poly", 0, -0.002, -0.41 + i * 0.028, nil, "pump") end
-	bx(g, 0.036, 0.1, 0.045, "tan", 0, -0.08, 0.1, CFrame.Angles(-0.35, 0, 0))
-	bx(g, 0.052, 0.08, 0.26, "tan", 0, -0.02, 0.24)
-	bx(g, 0.006, 0.01, 0.006, "accent", 0, 0.04, -0.69)
-	bx(g, 0.02, 0.01, 0.02, "metal", 0, 0.042, 0.03)
-	arms(g, 0.1, -0.34, -0.05)
-	muzzle(g, -0.72, 0.018)
-	g.hip, g.ads = Vector3.new(0.17, -0.18, -0.52), Vector3.new(0, -0.045, -0.52)
+	cy(g, 0.017, 0.52, "metal", 0, 0.018, -0.44)
+	g.mag = cy(g, 0.014, 0.42, "metal", 0, -0.022, -0.39)
+	g.tube = true
+	local pump = bx(g, 0.058, 0.052, 0.17, "alt", 0, -0.022, -0.34, { sub = "pump" })
+	for i = 0, 5 do bx(g, 0.06, 0.006, 0.01, "poly", 0, 0.02, -0.07 + i * 0.028, { parent = pump }) end
+	bx(g, 0.036, 0.1, 0.045, "alt", 0, -0.08, 0.1, { rot = CFrame.Angles(-0.35, 0, 0) })
+	bx(g, 0.052, 0.08, 0.26, "alt", 0, -0.02, 0.24)
+	bx(g, 0.006, 0.01, 0.006, "accent", 0, 0.04, -0.69); bx(g, 0.02, 0.01, 0.02, "metal", 0, 0.042, 0.03)
+	return { sightY = 0.045, rail = { 0, 0.038, -0.02 }, muzzleY = 0.018, muzzleZ = -0.72, underY = -0.05, underZ = -0.46, gripZ = 0.1, foreZ = -0.34, foreY = -0.05, hip = V3(0.17, -0.18, -0.52), adsZ = -0.64 }
 end
 
-function builders.sniper(g)
+function B.lmg(g)
+	bx(g, 0.08, 0.09, 0.42, "metal", 0, 0, -0.04)
+	local shroud = bx(g, 0.064, 0.064, 0.3, "poly", 0, 0.005, -0.4)
+	for i = 0, 5 do bx(g, 0.066, 0.014, 0.018, "metal", 0, 0.01, -0.12 + i * 0.045, { parent = shroud }) end
+	cy(g, 0.016, 0.22, "metal", 0, 0.005, -0.66); cy(g, 0.026, 0.06, "poly", 0, 0.005, -0.78)
+	g.mag = bx(g, 0.1, 0.11, 0.13, "alt", -0.02, -0.1, -0.06, { sub = "mag" })
+	bx(g, 0.102, 0.02, 0.132, "accent", 0, 0.03, 0, { parent = g.mag })
+	bx(g, 0.038, 0.1, 0.045, "poly", 0, -0.085, 0.1, { rot = CFrame.Angles(-0.3, 0, 0) })
+	bx(g, 0.055, 0.085, 0.26, "poly", 0, -0.015, 0.28)
+	bx(g, 0.012, 0.035, 0.1, "metal", 0, 0.065, -0.02); bx(g, 0.06, 0.012, 0.012, "metal", 0, 0.08, -0.02, { sub = "slide" })
+	bx(g, 0.012, 0.012, 0.22, "metal", 0.02, -0.04, -0.52); bx(g, 0.012, 0.012, 0.22, "metal", -0.02, -0.04, -0.52)
+	bx(g, 0.006, 0.02, 0.008, "metal", 0, 0.06, -0.52); bx(g, 0.026, 0.02, 0.01, "metal", 0, 0.066, 0.1)
+	return { sightY = 0.072, rail = { 0, 0.052, 0.04 }, muzzleY = 0.005, muzzleZ = -0.81, underY = -0.035, underZ = -0.36, gripZ = 0.1, foreZ = -0.34, foreY = -0.03, hip = V3(0.17, -0.2, -0.52), adsZ = -0.66 }
+end
+
+function B.sniper(g, on)
 	bx(g, 0.06, 0.07, 0.4, "metal", 0, 0, -0.02)
 	bx(g, 0.07, 0.07, 0.34, "poly", 0, -0.005, -0.38)
-	cyl(g, 0.014, 0.42, "metal", 0, 0.008, -0.74)
-	cyl(g, 0.024, 0.08, "metal", 0, 0.008, -0.97)
-	cyl(g, 0.028, 0.3, "poly", 0, 0.085, -0.08)
-	cyl(g, 0.04, 0.07, "poly", 0, 0.085, -0.25)
-	cyl(g, 0.034, 0.06, "poly", 0, 0.085, 0.09)
-	bx(g, 0.012, 0.035, 0.012, "metal", 0, 0.055, -0.14)
-	bx(g, 0.012, 0.035, 0.012, "metal", 0, 0.055, 0.02)
-	bx(g, 0.06, 0.012, 0.012, "metal", 0.065, 0.02, 0.1, nil, "bolt")
-	bx(g, 0.025, 0.025, 0.025, "metal", 0.097, 0.02, 0.1, nil, "bolt")
-	bx(g, 0.04, 0.07, 0.09, "poly", 0, -0.06, -0.05, nil, "mag")
-	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.08, 0.1, CFrame.Angles(-0.3, 0, 0))
-	bx(g, 0.055, 0.09, 0.28, "accent", 0, -0.02, 0.3)
-	bx(g, 0.05, 0.02, 0.14, "poly", 0, 0.035, 0.28)
-	arms(g, 0.1, -0.36, -0.04)
-	muzzle(g, -1.02, 0.008)
-	g.hip, g.ads = Vector3.new(0.18, -0.18, -0.5), Vector3.new(0, -0.085, -0.3)
+	cy(g, 0.014, 0.42, "metal", 0, 0.008, -0.74); cy(g, 0.024, 0.08, "metal", 0, 0.008, -0.97)
+	if not on.reddot then
+		cy(g, 0.028, 0.3, "poly", 0, 0.085, -0.08); cy(g, 0.04, 0.07, "poly", 0, 0.085, -0.25); cy(g, 0.034, 0.06, "poly", 0, 0.085, 0.09)
+		bx(g, 0.07, 0.07, 0.002, "lens", 0, 0.085, -0.286)
+		bx(g, 0.012, 0.035, 0.012, "metal", 0, 0.055, -0.14); bx(g, 0.012, 0.035, 0.012, "metal", 0, 0.055, 0.02)
+	end
+	bx(g, 0.06, 0.012, 0.012, "metal", 0.065, 0.02, 0.1, { sub = "bolt" })
+	bx(g, 0.028, 0.028, 0.028, "metal", 0.097, 0.02, 0.1, { sub = "bolt" })
+	g.mag = bx(g, 0.04, 0.07, 0.09, "poly", 0, -0.06, -0.05, { sub = "mag" })
+	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.08, 0.1, { rot = CFrame.Angles(-0.3, 0, 0) })
+	bx(g, 0.055, 0.09, 0.28, "accent", 0, -0.02, 0.3); bx(g, 0.05, 0.02, 0.14, "poly", 0, 0.035, 0.28)
 	g.boltPivot = CFrame.new(0.035 * S, 0.02 * S, 0.1 * S)
+	return { sightY = 0.085, rail = { 0, 0.035, -0.26 }, muzzleY = 0.008, muzzleZ = -1.02, underY = -0.04, underZ = -0.42, gripZ = 0.1, foreZ = -0.36, foreY = -0.04, hip = V3(0.18, -0.18, -0.5), adsZ = -0.3 }
 end
 
-function Viewmodels.build()
-	local guns = {}
-	for i, def in ipairs(Config.Weapons) do
-		local g = newGun(def)
-		builders[def.id](g)
-		g.hip *= S
-		g.ads *= S
-		guns[i] = g
-	end
-	return guns
+function B.plasma(g)
+	bx(g, 0.07, 0.08, 0.42, "poly", 0, 0, -0.04)
+	bx(g, 0.074, 0.03, 0.3, "accent", 0, 0.03, -0.06)
+	bx(g, 0.03, 0.02, 0.16, "cyan", 0.036, 0.01, -0.06)
+	cy(g, 0.018, 0.2, "metal", 0, 0.005, -0.35)
+	g.coils = {}
+	for i = 0, 2 do table.insert(g.coils, ring(g, 0.03, "cyan", 0, 0.005, -0.29 - i * 0.05)) end
+	cy(g, 0.03, 0.04, "metal", 0, 0.005, -0.47)
+	g.mag = bx(g, 0.045, 0.1, 0.07, "metal", 0, -0.085, -0.12, { sub = "mag" })
+	bx(g, 0.047, 0.05, 0.03, "cyan", 0, -0.01, 0, { parent = g.mag })
+	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.08, 0.06, { rot = CFrame.Angles(-0.3, 0, 0) })
+	bx(g, 0.05, 0.07, 0.2, "poly", 0, -0.01, 0.24)
+	bx(g, 0.006, 0.018, 0.008, "metal", 0, 0.054, -0.2); bx(g, 0.024, 0.016, 0.01, "metal", 0, 0.054, 0.08)
+	return { sightY = 0.07, rail = { 0, 0.045, -0.02 }, muzzleY = 0.005, muzzleZ = -0.5, underY = -0.045, underZ = -0.3, gripZ = 0.06, foreZ = -0.26, foreY = -0.04, hip = V3(0.17, -0.18, -0.48), adsZ = -0.6 }
+end
+
+-- a key that changes whenever the gun needs rebuilding
+function Viewmodels.signature(id, prof)
+	local t = { (prof.skin and prof.skin[id]) or "stock" }
+	for _, a in ipairs(Config.AttachmentOrder) do if Stats.attOn(prof, id, a) then table.insert(t, a) end end
+	return table.concat(t, ",")
+end
+
+function Viewmodels.build(id, prof)
+	local def = Config.WeaponById[id]
+	local on = {}
+	for _, a in ipairs(Config.AttachmentOrder) do on[a] = Stats.attOn(prof, id, a) end
+	local skin = (prof.skin and prof.skin[id]) or "stock"
+	if not (prof.skins and prof.skins[skin]) then skin = "stock" end
+	local g = newGun(def, skin)
+	g.silenced = on.silencer
+	g.reddot = on.reddot
+	g.laser = on.laser
+	local o = B[id](g, on)
+	finish(g, o, on)
+	g.signature = Viewmodels.signature(id, prof)
+	return g
 end
 
 -- place every part of gun g relative to base; subs holds extra CFrames for moving parts
@@ -185,6 +313,10 @@ function Viewmodels.place(g, base, subs)
 		local s = e.sub and subs[e.sub]
 		e.p.CFrame = s and (base * s * e.off) or (base * e.off)
 	end
+end
+
+function Viewmodels.destroy(g)
+	g.model:Destroy()
 end
 
 return Viewmodels
