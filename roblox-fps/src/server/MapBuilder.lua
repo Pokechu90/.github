@@ -283,7 +283,7 @@ MAPS.factory = {
 				deco(cx, 1.0, z - 1.05, w, 0.25, 0.1, MAT.SmoothPlastic, C.hazard); deco(cx, 1.0, z + 1.05, w, 0.25, 0.1, MAT.SmoothPlastic, C.hazard)
 			end
 		end
-		for _, p in ipairs({ { -24, 0 }, { 24, 0 }, { 0, -32 }, { 0, 32 } }) do
+		for _, p in ipairs({ { -21, 0 }, { 21, 0 }, { 0, -32 }, { 0, 32 } }) do
 			local x, z = p[1], p[2]
 			box(statics, x, 0, z, 5, 1.6, 5, MAT.CorrodedMetal, C.rust)
 			for _, o in ipairs({ { -2.2, -2.2 }, { 2.2, -2.2 }, { -2.2, 2.2 }, { 2.2, 2.2 } }) do box(statics, x + o[1], 1.6, z + o[2], 0.6, 7, 0.6, MAT.Metal, C.steel) end

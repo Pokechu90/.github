@@ -161,7 +161,7 @@ const MAPS = [
         }
       }
       // hydraulic presses
-      for (const [x, z] of [[-24, 0], [24, 0], [0, -32], [0, 32]]) {
+      for (const [x, z] of [[-21, 0], [21, 0], [0, -32], [0, 32]]) {
         block(x, 0, z, 5, 1.6, 5, M.rust, { uv: 3 });
         block(x - 2.2, 1.6, z - 2.2, 0.6, 7, 0.6, M.steel); block(x + 2.2, 1.6, z - 2.2, 0.6, 7, 0.6, M.steel);
         block(x - 2.2, 1.6, z + 2.2, 0.6, 7, 0.6, M.steel); block(x + 2.2, 1.6, z + 2.2, 0.6, 7, 0.6, M.steel);
@@ -450,6 +450,7 @@ function loadMap(id) {
   m.build();
   buildStations(m);
   mergeStatic();
+  buildNav();
   world.spawnPoints = m.spawns.map(([x, z]) => new V3(x, 0, z)).filter(p => pointFree(p.x, p.z, 1));
   world.playerSpawn.set(...m.playerSpawn);
   applyQuality();

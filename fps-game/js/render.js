@@ -251,7 +251,7 @@ function moveBody(b, dt, step = 0.55) {
   b.pos.z += b.vel.z * dt; resolveAxis(b, 2, step);
   const prevY = b.pos.y;
   b.vel.y -= (b.gravity ?? 24) * dt; b.pos.y += b.vel.y * dt;
-  let ground = world.floor || 0, ceil = world.ceiling; const r = b.radius * 0.9;
+  let ground = world.floor || 0, ceil = world.ceiling; const r = b.radius; // full radius, so a body that just stepped onto a ledge stays on it
   for (const c of world.colliders) {
     if (b.pos.x + r <= c.min.x || b.pos.x - r >= c.max.x || b.pos.z + r <= c.min.z || b.pos.z - r >= c.max.z) continue;
     if (c.max.y <= prevY + 0.02 && c.max.y > ground) ground = c.max.y;
@@ -264,13 +264,23 @@ function moveBody(b, dt, step = 0.55) {
   const lim = world.half - 1.2;
   b.pos.x = clamp(b.pos.x, -lim, lim); b.pos.z = clamp(b.pos.z, -lim, lim);
 }
+const touching = [];
 function resolveAxis(b, ax, step) {
   const r = b.radius;
+  touching.length = 0;
   for (const c of world.colliders) {
     if (b.pos.x + r <= c.min.x || b.pos.x - r >= c.max.x || b.pos.z + r <= c.min.z || b.pos.z - r >= c.max.z) continue;
+    touching.push(c);
+  }
+  // lowest ledges first, so a flight of stairs is climbed one step after another
+  if (touching.length > 1) touching.sort((a, c) => a.max.y - c.max.y);
+  for (const c of touching) {
     if (b.pos.y >= c.max.y - 0.001 || b.pos.y + b.height <= c.min.y) continue;
     const climb = c.max.y - b.pos.y;
     if (climb <= step && b.onGround) { b.pos.y = c.max.y; continue; }
+    // push out along the shallower overlap only; the other axis' pass handles the rest
+    const px = Math.min(b.pos.x + r - c.min.x, c.max.x - (b.pos.x - r)), pz = Math.min(b.pos.z + r - c.min.z, c.max.z - (b.pos.z - r));
+    if (ax === 0 ? px > pz + 1e-3 : pz > px + 1e-3) continue;
     if (ax === 0) { const cx = (c.min.x + c.max.x) / 2; b.pos.x = (b.pos.x < cx) ? c.min.x - r - 1e-4 : c.max.x + r + 1e-4; b.vel.x = 0; }
     else { const cz = (c.min.z + c.max.z) / 2; b.pos.z = (b.pos.z < cz) ? c.min.z - r - 1e-4 : c.max.z + r + 1e-4; b.vel.z = 0; }
     b.blocked = true;

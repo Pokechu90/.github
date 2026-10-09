@@ -19,7 +19,26 @@ A wave-survival first-person shooter that runs in the browser. It uses plain HTM
 | Juggernaut | Wave 6 | Slow, very tough, fires explosive orbs |
 | Bulwark | Wave 7 | Energy shield blocks frontal fire; hit the head or flank to reach its back cell |
 
-Every bot has a head hitbox. Enemies gain health, speed, damage and numbers each wave.
+Every enemy has a head hitbox. Enemies gain health, speed, damage and numbers each wave.
+
+**Enemy factions change every 10 waves**, then the cycle repeats and gets harder:
+| Waves | Faction | Troops (same seven roles as the robots) | Bosses |
+| --- | --- | --- | --- |
+| 1–10, 31–40 … | Machine legion | The seven robots above | Titan-9, Hive Mother, Ironclad |
+| 11–20, 41–50 … | Goblin warband | Goblin Archers (arcing arrows), Cutthroats (twin daggers), Fire Bats (fireballs), Crossbow Hunters, Powder Sappers (lit kegs; shoot the fuse), Cave Trolls (throw boulders), Shieldbearers (wooden shields, thrown knives) | **Goblin Elder** |
+| 21–30, 51–60 … | Restless dead | Bone Archers, Ghouls, Wraiths, Deadeyes, Bloaters, Bone Colossi, Death Knights | **The Lich** |
+
+Every faction has its own models, projectiles, sounds, hit effects and death effects. Arrows and thrown knives arc with gravity and stick in walls.
+- **Goblin Elder**: dual-wields two curved blades.
+  - Fights with two-hit slash combos and leap slams on a red ring.
+  - From phase two, throws fans of daggers; in the final phase, spins in a berserk whirlwind.
+  - Calls in his warband of cutthroats, archers and sappers.
+  - A **Goblin Shaman** heals him with a green beam: kill it first. His glowing amulet is the weak point.
+- **The Lich**: floats over the field and fires soul volleys.
+  - Raises the dead around itself, with an **Acolyte** healer.
+  - Blinks away when you get close; in the final phase, erupts grave novas under you. Its soul gem is the weak point.
+
+**Pathfinding.** Each map gets a navigation grid built when it loads, and a flow field toward the player is updated a few frames at a time. Every walking enemy climbs stairs and steps, drops off ledges and detours around long obstacles to reach you on raised floors.
 
 **Bosses every fifth wave**, each with a health bar, three phases (at 50% and 25% health) and weak points:
 - **Titan-9** siege mech. Cannon volleys, then missile barrages, then a ground stomp. Weak point: its chest reactor.
@@ -68,7 +87,12 @@ Every boss kill pays a big coin reward and a guaranteed rare drop (an attachment
 Coins and XP get a smaller share of the same multipliers.
 
 **Gunplay and feel** (from research into what makes shooters satisfying):
-- Learnable per-weapon recoil patterns.
+- Learnable per-weapon recoil patterns, driven by springs:
+  - Each shot is an impulse, so the aim snaps up and settles smoothly instead of stepping.
+  - Most recoil springs back, and 30% stays for you to pull down.
+  - A separate camera punch adds weight without affecting where bullets go.
+- The viewmodel kicks back and rises with a slight overshoot. It lags behind your turns, leans into strafes, floats on jumps and dips on landing.
+- After a long burst, smoke drifts from the hot barrel.
 - Bots flinch and get knocked back; headshot kills pop the head off; a short hit-stop lands on headshot and boss kills.
 - Tactical reloads (with ammo left) are 20% faster than empty reloads.
 - Mantle up ledges.
@@ -109,7 +133,9 @@ Coins and XP get a smaller share of the same multipliers.
 | `js/maps.js` | The five maps and their lighting |
 | `js/weapons.js` | Weapons, attachments, skins, upgrades, viewmodels |
 | `js/progression.js` | XP and levels, quests, buffs, coins |
-| `js/enemies.js` | Robot types and bosses |
+| `js/nav.js` | Navigation grid and flow-field pathfinding |
+| `js/enemies.js` | Robot types, shared enemy AI and the robot bosses |
+| `js/factions.js` | Goblin and undead troops, their models and projectiles, the Goblin Elder and the Lich, faction rotation |
 | `js/combat.js` | Projectiles, explosions, grenades, pickups, rewards, killstreaks |
 | `js/ui.js` | HUD and menu screens |
 | `js/game.js` | Player, weapon handling, waves, states, input, main loop |

@@ -322,8 +322,10 @@ function Enemy:think(target)
 		else goal = rootPos + V(-dir.Z, 0, dir.X) * self.strafe * 14 end
 	end
 
-	-- follow a path when the target is out of sight, otherwise steer directly
-	if not self.los then
+	-- follow a path when the target is out of sight or up on a raised floor (stairs), otherwise steer directly
+	local elevated = tpos.Y - rootPos.Y > 4
+	if elevated and k.melee then goal = tpos end
+	if not self.los or elevated then
 		self.pathT -= 0.15
 		if self.pathT <= 0 then self.pathT = 1.4; self:computePath(tpos) end
 	else

@@ -117,6 +117,16 @@ const SFX = (() => {
       else if (kind === 'drone') { tone({ type: 'square', f: 2200, f2: 900, dur: 0.08, peak: 0.1, dest: d }); }
       else { tone({ type: 'sawtooth', f: 1500, f2: 260, dur: 0.18, peak: 0.2, dest: d }); tone({ type: 'square', f: 320, f2: 60, dur: 0.12, peak: 0.1, dest: d }); }
     },
+    // creature factions
+    bow(pos, cross) { if (!ctx || !gate('bow', 40)) return; const d = bus(pos, 0.25, 0.9); tone({ type: 'triangle', f: cross ? 260 : 180, f2: cross ? 120 : 90, dur: cross ? 0.12 : 0.22, peak: 0.25, dest: d }); nz({ dur: 0.08, type: 'bandpass', f: cross ? 2600 : 1800, q: 2, peak: 0.25, dest: d }); },
+    throwBlade(pos) { if (!ctx || !gate('tblade', 40)) return; const d = bus(pos, 0.15, 0.8); nz({ dur: 0.16, type: 'bandpass', f: 3000, f2: 1200, q: 3, peak: 0.25, dest: d }); },
+    thud(pos) { if (!ctx || !gate('thud', 30)) return; const d = bus(pos, 0.15, 0.8); tone({ f: 220, f2: 90, dur: 0.07, peak: 0.25, dest: d }); nz({ dur: 0.05, type: 'bandpass', f: 1400, q: 2, peak: 0.2, dest: d }); },
+    squeal(pos) { if (!ctx || !gate('squeal', 50)) return; const d = bus(pos, 0.3, 0.9); tone({ type: 'sawtooth', f: rand(900, 1200), f2: rand(250, 400), dur: 0.35, peak: 0.12, dest: d }); tone({ type: 'square', f: rand(600, 800), f2: 200, dur: 0.25, peak: 0.05, dest: d }); },
+    growl(pos) { if (!ctx || !gate('growl', 120)) return; const d = bus(pos, 0.4, 1); tone({ type: 'sawtooth', f: 110, f2: 70, dur: 0.6, peak: 0.25, dest: d }); nz({ dur: 0.5, type: 'bandpass', f: 500, f2: 250, q: 3, peak: 0.25, dest: d }); },
+    rattle(pos) { if (!ctx || !gate('rattle', 40)) return; const d = bus(pos, 0.25, 0.9); for (let i = 0; i < 6; i++) nz({ t: now() + i * 0.035 + rand(0, 0.02), dur: 0.03, type: 'bandpass', f: rand(1800, 3200), q: 5, peak: 0.25, dest: d }); },
+    wail(pos) { if (!ctx || !gate('wail', 120)) return; const d = bus(pos, 0.7, 0.9); tone({ type: 'sine', f: 520, f2: 260, dur: 0.9, peak: 0.12, a: 0.15, dest: d }); tone({ type: 'sine', f: 527, f2: 270, dur: 0.9, peak: 0.1, a: 0.15, dest: d }); },
+    spit(pos) { if (!ctx || !gate('spit', 40)) return; const d = bus(pos, 0.2, 0.9); nz({ dur: 0.25, type: 'lowpass', f: 2400, f2: 300, peak: 0.35, dest: d }); tone({ f: 160, f2: 60, dur: 0.15, peak: 0.15, dest: d }); },
+    whoosh(pos) { if (!ctx || !gate('whoosh', 60)) return; const d = bus(pos, 0.2, 1); nz({ dur: 0.3, type: 'bandpass', f: 600, f2: 2400, q: 1.2, peak: 0.35, dest: d }); },
     charge(pos, long) { if (!ctx) return; const d = bus(pos, 0.2, 0.6); tone({ type: 'sine', f: 300, f2: long ? 2400 : 1400, dur: long ? 1.1 : 0.35, peak: 0.08, dest: d }); },
     beep(pos, f = 1800) { if (!ctx) return; const d = bus(pos, 0.1, 0.7); tone({ type: 'square', f, dur: 0.05, peak: 0.1, dest: d }); },
     whiz() { if (!ctx || !gate('whiz', 80)) return; const d = bus(null, 0.1); nz({ dur: 0.18, type: 'bandpass', f: 3000, f2: 700, q: 3, peak: 0.25, dest: d }); },

@@ -3,8 +3,21 @@
 
 let state = 'menu', time = 0, shake = 0, deathT = 0, heartT = 0, locked = false, expectUnlock = false, lookGrace = 0, hitStop = 0;
 const player = { pos: new V3(0, 0, 20), vel: new V3(), radius: 0.4, height: 1.8, onGround: true, landV: 0, yaw: 0, pitch: 0, hp: 100, armor: 50, lastHurt: -99, crouch: 0, stepDist: 0, frags: 3, stuns: 2, alive: true, stunT: 0, slideT: 0, slideCd: 0, jumpHeld: false, streakWarned: false };
-const G = { cur: 0, prev: 1, cooldown: 0, reloading: false, reloadT: 0, reloadDur: 1, sprayN: 0, lastShotT: -9, adsToggled: false, switchT: 0, switchTo: -1, ads: 0, bloom: 0, fireQueued: false, recoilPitch: 0, pumpT: 1, nadeT: 0, flashT: 0, burstLeft: 0, burstT: 0, dryClicked: false };
-const VMS = { kick: 0, kickRot: 0, swayX: 0, swayY: 0, bob: 0, sprint: 0, land: 0, nade: 0, slide: 0, slideTilt: 0, inspect: 0, mantle: 0 };
+const G = { cur: 0, prev: 1, cooldown: 0, reloading: false, reloadT: 0, reloadDur: 1, sprayN: 0, lastShotT: -9, adsToggled: false, switchT: 0, switchTo: -1, ads: 0, bloom: 0, fireQueued: false, pumpT: 1, nadeT: 0, flashT: 0, burstLeft: 0, burstT: 0, dryClicked: false };
+const VMS = { swayX: 0, swayY: 0, bob: 0, sprint: 0, land: 0, nade: 0, slide: 0, slideTilt: 0, inspect: 0, mantle: 0, heat: 0 };
+// Gun feel runs on damped springs: a shot is an impulse, so recoil snaps up quickly and settles with a
+// little overshoot instead of jumping in fixed steps.
+// RC moves where bullets go: most of it springs back, and part is baked into the aim so sprays still climb.
+// PUNCH only shakes the camera. VR kicks the viewmodel. SW is the weight of the gun lagging behind your turns.
+const RC = { p: 0, pv: 0, y: 0, yv: 0, bakeP: 0, bakeY: 0 };
+const PUNCH = { p: 0, pv: 0, r: 0, rv: 0 };
+const VR = { z: 0, zv: 0, y: 0, yv: 0, rx: 0, rxv: 0, ry: 0, ryv: 0, rz: 0, rzv: 0 };
+const SW = { x: 0, xv: 0, y: 0, yv: 0, r: 0, rv: 0, tilt: 0, lift: 0 };
+function springStep(o, key, vkey, target, k, c, dt) {
+  const n = dt > 0.012 ? Math.ceil(dt / 0.012) : 1, h = dt / n;
+  for (let i = 0; i < n; i++) { o[vkey] += (-k * (o[key] - target) - c * o[vkey]) * h; o[key] += o[vkey] * h; }
+}
+function resetGunFeel() { for (const o of [RC, PUNCH, VR, SW]) for (const k in o) o[k] = 0; VMS.heat = 0; }
 const waves = { active: false, queue: [], spawnT: 0, inter: 0, bossPending: 0, boss: false };
 let loadout = [profile.loadout.primary, profile.loadout.secondary];
 let ammo = [{ mag: 0, reserve: 0 }, { mag: 0, reserve: 0 }];
@@ -75,9 +88,19 @@ function updatePlayer(dt) {
   const zoomSens = lerp(1, s.zoom * settings.adsSens, G.ads);
   player.yaw -= look.dx * 0.0022 * settings.sens * zoomSens;
   player.pitch -= look.dy * 0.0022 * settings.sens * zoomSens * (settings.invert ? -1 : 1);
-  VMS.swayX = damp(VMS.swayX, clamp(look.dx * 0.0006, -0.05, 0.05), 10, dt); VMS.swayY = damp(VMS.swayY, clamp(look.dy * 0.0006, -0.05, 0.05), 10, dt);
+  // the gun trails behind mouse movement (less when aiming down sights)
+  const swayK = 1 - G.ads * 0.75;
+  SW.xv -= clamp(look.dx, -80, 80) * 0.0035 * swayK; SW.yv += clamp(look.dy, -80, 80) * 0.0035 * swayK * (settings.invert ? -1 : 1); SW.rv -= clamp(look.dx, -80, 80) * 0.012 * swayK;
   look.dx = look.dy = 0;
-  const rec = G.recoilPitch * Math.min(1, dt * 7); G.recoilPitch -= rec; player.pitch -= rec * 0.7;
+  springStep(SW, 'x', 'xv', 0, 120, 11, dt); springStep(SW, 'y', 'yv', 0, 120, 11, dt); springStep(SW, 'r', 'rv', 0, 90, 9, dt);
+  SW.x = clamp(SW.x, -0.06, 0.06); SW.y = clamp(SW.y, -0.06, 0.06); SW.r = clamp(SW.r, -0.25, 0.25);
+  VMS.swayX = SW.x; VMS.swayY = SW.y;
+  // recoil: bake the permanent share into the aim over a few frames, spring the rest back
+  const bp = RC.bakeP * Math.min(1, dt * 22), by = RC.bakeY * Math.min(1, dt * 22);
+  RC.bakeP -= bp; RC.bakeY -= by; player.pitch += bp; player.yaw += by;
+  const rk = weaponRuntime().recover || 190;
+  springStep(RC, 'p', 'pv', 0, rk, 2 * 0.85 * Math.sqrt(rk), dt); springStep(RC, 'y', 'yv', 0, rk, 2 * 0.85 * Math.sqrt(rk), dt);
+  springStep(PUNCH, 'p', 'pv', 0, 420, 17, dt); springStep(PUNCH, 'r', 'rv', 0, 380, 15, dt);
   player.pitch = clamp(player.pitch, -1.5, 1.5);
   player.stunT = Math.max(0, player.stunT - dt); player.slideCd = Math.max(0, player.slideCd - dt);
   if (player.mantle) { updateMantle(dt); return; }
@@ -103,7 +126,7 @@ function updatePlayer(dt) {
   if (keys.Space && player.onGround && !player.jumpHeld) { player.vel.y = 8; player.onGround = false; player.jumpHeld = true; if (player.slideT > 0) { player.slideT = 0; player.slideCd = 0.6; } SFX.land(0.4); }
   if (!keys.Space) player.jumpHeld = false;
   moveBody(player, dt);
-  if (player.landV > 6) { SFX.land(Math.min(1.5, player.landV / 10)); VMS.land = Math.min(1, player.landV / 14); shake += player.landV * 0.01; }
+  if (player.landV > 6) { SFX.land(Math.min(1.5, player.landV / 10)); VMS.land = Math.min(1, player.landV / 14); shake += player.landV * 0.01; SW.yv -= player.landV * 0.04; VR.rxv -= player.landV * 0.08; }
   const hs = Math.hypot(player.vel.x, player.vel.z);
   VMS.sprint = damp(VMS.sprint, sprinting && hs > 4 ? 1 : 0, 8, dt);
   VMS.slideTilt = damp(VMS.slideTilt, player.slideT > 0 ? 1 : 0, 10, dt);
@@ -151,7 +174,8 @@ function updateCamera(dt) {
   VMS.land = damp(VMS.land, 0, 6, dt);
   camera.position.set(player.pos.x, player.pos.y + eyeHeight() + Math.sin(VMS.bob * 2) * 0.035 * bobA - VMS.land * 0.18, player.pos.z);
   camera.position.x += (Math.random() - .5) * sk * 0.25; camera.position.y += (Math.random() - .5) * sk * 0.25;
-  camera.rotation.set(player.pitch + (Math.random() - .5) * sk * 0.04, player.yaw + (Math.random() - .5) * sk * 0.04, Math.sin(VMS.bob) * 0.006 * bobA - VMS.slideTilt * 0.06);
+  const motion = reduceMotion ? 0.4 : 1;
+  camera.rotation.set(player.pitch + RC.p + PUNCH.p * motion + (Math.random() - .5) * sk * 0.04, player.yaw + RC.y + (Math.random() - .5) * sk * 0.04, Math.sin(VMS.bob) * 0.006 * bobA - VMS.slideTilt * 0.06 + PUNCH.r * motion - SW.tilt * 0.15);
   const targetFov = settings.fov * lerp(1, s.zoom, smooth(G.ads)) * (1 + VMS.sprint * 0.06 + VMS.slideTilt * 0.08) * (powerups.speed > 0 ? 1.04 : 1);
   camera.fov = damp(camera.fov, targetFov, 18, dt); camera.updateProjectionMatrix();
   camera.updateMatrixWorld();
@@ -191,7 +215,7 @@ function updateWeapon(dt) {
   if (G.reloading) {
     G.reloadT += dt;
     if (s.shellReload) {
-      if (G.reloadT >= s.reload) { G.reloadT = 0; am.mag++; am.reserve--; SFX.thunk(0, 0.25); SFX.click(3000, 0.12, 0.05); VMS.kick += 0.02; if (am.mag >= s.mag || am.reserve <= 0) { G.reloading = false; G.pumpT = 0; SFX.click(1200, 0.3, 0.1); SFX.click(1800, 0.3, 0.25); } }
+      if (G.reloadT >= s.reload) { G.reloadT = 0; am.mag++; am.reserve--; SFX.thunk(0, 0.25); SFX.click(3000, 0.12, 0.05); VR.zv += 0.6; VR.rxv -= 0.8; if (am.mag >= s.mag || am.reserve <= 0) { G.reloading = false; G.pumpT = 0; SFX.click(1200, 0.3, 0.1); SFX.click(1800, 0.3, 0.25); } }
     } else if (G.reloadT >= G.reloadDur) { const n = Math.min(s.mag - am.mag, am.reserve); am.mag += n; am.reserve -= n; G.reloading = false; }
   }
   // burst in progress
@@ -217,7 +241,7 @@ function updateWeapon(dt) {
   if (G.pumpT < 1) G.pumpT += dt / 0.45;
 }
 const ray = new THREE.Raycaster();
-const camRight = new V3(), camUp = new V3(), camFwd = new V3(), muzzleW = new V3();
+const camRight = new V3(), camUp = new V3(), camFwd = new V3(), muzzleW = new V3(), aimQ = new THREE.Quaternion(), aimE = new THREE.Euler();
 function currentSpread() {
   const s = weaponRuntime();
   const hs = Math.hypot(player.vel.x, player.vel.z);
@@ -229,8 +253,9 @@ function fire(s, am) {
   const mods = buffMods();
   if (!mods.infinite) am.mag--;
   G.cooldown = 60 / s.rpm; run.shots++;
-  camera.updateMatrixWorld();
-  camRight.setFromMatrixColumn(camera.matrixWorld, 0); camUp.setFromMatrixColumn(camera.matrixWorld, 1); camera.getWorldDirection(camFwd);
+  // aim along the recoil-adjusted look direction; camera punch and shake are visual only
+  aimQ.setFromEuler(aimE.set(player.pitch + RC.p, player.yaw + RC.y, 0, 'YXZ'));
+  camRight.set(1, 0, 0).applyQuaternion(aimQ); camUp.set(0, 1, 0).applyQuaternion(aimQ); camFwd.set(0, 0, -1).applyQuaternion(aimQ);
   const spread = currentSpread();
   const gun = GUNS[s.id];
   vmMuzzleWorld(gun, muzzleW);
@@ -260,7 +285,7 @@ function fire(s, am) {
         const part = h.object.userData.part;
         const key = en.id + ':' + part;
         const rec = hitsBy.get(key) || { en, part, dmg: 0, point: h.point.clone(), normal: n.clone(), dir: dir.clone() }; rec.dmg += dmg; hitsBy.set(key, rec);
-        if (part !== 'shield') { sparks(h.point, part === 'head' ? 12 : 6, n, 7, COL.elec, COL.elecEnd); sparks(h.point, 3, n, 5); if (Math.random() < 0.4) SMOKE.spawn(h.point, tv2.copy(n).multiplyScalar(1.5), 0.6, 0.1, 0.5, COL.oil, COL.smoke, { grav: 5, alpha: 0.8 }); }
+        if (part !== 'shield') enemyHitFx(en, h.point, n, part);
       } else if (h.object.userData.barrel) { damageBarrel(h.object.userData.barrel, s.dmg); sparks(h.point, 8, n, 6); decal(h.point, n, 0.12); SFX.clank(h.point); }
       else { sparks(h.point, 5, n, 7); puff(h.point, 2, n, COL.dust, 0.25, 0.7); decal(h.point, n, rand(0.12, 0.18)); }
     }
@@ -280,13 +305,21 @@ function fire(s, am) {
   const recoilMul = (player.crouch > 0.5 ? 0.7 : 1) * lerp(1, 0.6 * s.adsRecoil, G.ads);
   if (time - G.lastShotT > 0.35) G.sprayN = 0;
   G.sprayN++; G.lastShotT = time; VMS.inspect = 0;
-  // learnable spray: a per-weapon horizontal pattern plus a little noise; vertical kick climbs over the first shots
-  player.pitch += s.recoil * recoilMul * (1 + Math.min(G.sprayN, 10) * 0.035) * rand(0.95, 1.05);
-  player.yaw += s.recoil * recoilMul * (recoilPattern(s.id, G.sprayN) * 0.55 + rand(-0.08, 0.08));
-  G.recoilPitch += s.recoil * recoilMul;
+  // learnable spray: a per-weapon horizontal pattern plus a little noise; vertical kick climbs over the first shots.
+  // 30% of the climb stays (pull down to control it); the rest springs back once you stop.
+  const kickP = s.recoil * recoilMul * (1 + Math.min(G.sprayN, 10) * 0.035) * rand(0.95, 1.05);
+  const kickY = s.recoil * recoilMul * (recoilPattern(s.id, G.sprayN) * 0.55 + rand(-0.08, 0.08));
+  RC.bakeP += kickP * 0.3; RC.bakeY += kickY * 0.6;
+  RC.pv += kickP * 0.7 * 40; RC.yv += kickY * 0.4 * 40;
   G.bloom += s.recoil * 0.9;
-  VMS.kick += s.kick; VMS.kickRot += s.kick * 2.2; VMS.slide = 1;
-  shake = Math.min(1, shake + s.kick * 0.5);
+  // camera punch and viewmodel kick: back, up, and a random twist that settles with overshoot
+  const adsK = lerp(1, 0.55, G.ads), heavy = s.kick >= 0.09;
+  PUNCH.pv += s.kick * 6 * adsK; PUNCH.rv += rand(-1, 1) * s.kick * (heavy ? 5 : 3);
+  VR.zv += s.kick * 26 * lerp(1, 0.7, G.ads); VR.yv += s.kick * 3;
+  VR.rxv += s.kick * 30 * lerp(1, 0.45, G.ads); VR.ryv += rand(-1, 1) * s.kick * 9; VR.rzv += rand(-1, 1) * s.kick * 16;
+  VMS.slide = 1;
+  if (heavy) shake = Math.min(1, shake + s.kick * 0.25);
+  VMS.heat = Math.min(1, VMS.heat + s.recoil * 2.2 + (s.pellets > 1 ? 0.2 : 0));
   if (s.pump) { G.pumpT = -0.4; SFX.click(1300, 0.3, 0.3); SFX.click(1900, 0.3, 0.45); }
   if (s.bolt) { G.pumpT = -0.2; SFX.click(1500, 0.25, 0.35); SFX.click(2300, 0.25, 0.75); }
   if (!s.pump && !s.projectile) { ejectShell(s.id); SFX.tink(rand(0.35, 0.55)); }
@@ -327,7 +360,16 @@ function updateLaser(s) {
 // ---------------- viewmodel ----------------
 function updateViewmodel(dt) {
   const s = weaponRuntime(), gun = GUNS[s.id], am = ammo[G.cur];
-  VMS.kick = damp(VMS.kick, 0, 16, dt); VMS.kickRot = damp(VMS.kickRot, 0, 12, dt); VMS.slide = damp(VMS.slide, 0, 22, dt);
+  springStep(VR, 'z', 'zv', 0, 320, 22, dt); springStep(VR, 'y', 'yv', 0, 260, 18, dt);
+  springStep(VR, 'rx', 'rxv', 0, 260, 15, dt); springStep(VR, 'ry', 'ryv', 0, 200, 13, dt); springStep(VR, 'rz', 'rzv', 0, 200, 13, dt);
+  VMS.slide = damp(VMS.slide, 0, 22, dt);
+  // lean into strafes and let the gun float on jumps
+  const lat = player.vel.x * Math.cos(player.yaw) - player.vel.z * Math.sin(player.yaw);
+  SW.tilt = damp(SW.tilt, clamp(lat * 0.02, -0.14, 0.14) * (1 - G.ads * 0.7), 8, dt);
+  SW.lift = damp(SW.lift, player.onGround ? 0 : clamp(-player.vel.y * 0.004, -0.03, 0.03), 6, dt);
+  // heat haze: a wisp of smoke from the barrel after a long burst
+  VMS.heat = Math.max(0, VMS.heat - dt * 0.35);
+  if (VMS.heat > 0.45 && time - G.lastShotT > 0.2 && Math.random() < VMS.heat * 0.5) { vmMuzzleWorld(gun, tv4); SMOKE.spawn(tv4, tv3.set(rand(-.1, .1), rand(0.4, 0.8), rand(-.1, .1)), rand(0.6, 1.1), 0.02, 0.18, COL.dust, COL.dustEnd, { drag: 1.5, alpha: 0.18, grav: -0.4 }); }
   VMS.nade = Math.max(0, VMS.nade - dt * 1.4);
   const a = smooth(G.ads);
   const p = tv.lerpVectors(gun.hip, gun.adsPos, a);
@@ -336,8 +378,9 @@ function updateViewmodel(dt) {
   let rx = 0, ry = 0, rz = 0;
   p.x += Math.cos(VMS.bob) * 0.012 * bobA * (1 + sprintK) - VMS.swayX * (1 - a * 0.7);
   p.y += Math.abs(Math.sin(VMS.bob)) * 0.012 * bobA * (1 + sprintK) + VMS.swayY * (1 - a * 0.7) - VMS.land * 0.05;
-  p.z += VMS.kick * (a > 0.5 ? 0.6 : 1);
-  rx += VMS.kickRot * (a > 0.5 ? 0.35 : 1); ry += VMS.swayX * 2; rx += VMS.swayY * 2;
+  p.z += VR.z; p.y += VR.y + SW.lift;
+  rx += VR.rx; ry += VR.ry + VMS.swayX * 2; rz += VR.rz + SW.r * (1 - a * 0.6) - SW.tilt; rx += VMS.swayY * 2;
+  p.x -= SW.tilt * 0.05;
   p.x += sprintK * 0.04; p.y -= sprintK * 0.04; ry += sprintK * 0.7; rx -= sprintK * 0.25; rz += sprintK * 0.2;
   rz -= VMS.slideTilt * 0.25; p.y -= VMS.slideTilt * 0.03;
   if (G.switchT > 0) { const k = G.switchT > 0.2 ? (0.4 - G.switchT) / 0.2 : G.switchT / 0.2; p.y -= smooth(k) * 0.25; rx -= smooth(k) * 0.6; }
@@ -371,14 +414,17 @@ function composeWave(w) {
   const mu = (run.mutator && MUTATORS[run.mutator]) || {};
   let count = Math.round((isBoss ? 3 + w * 0.5 : 5 + w * 2) * d.count * (mu.count || 1));
   count = Math.min(count, 44);
-  const avail = Object.entries(ENEMY_TYPES).filter(([, k]) => k.from <= w);
-  const caps = { tank: w >= 6 ? 1 + Math.floor((w - 6) / 4) : 0, sniper: 1 + Math.floor(w / 4), shield: 1 + Math.floor(w / 3), exploder: 2 + Math.floor(w / 3) };
+  // the current faction's troops, unlocked by how far into its ten-wave era the run is
+  const lw = factionLocalWave(w), avail = factionRoster(w).map(k => [k, ENEMY_TYPES[k]]).filter(([, k]) => k.from <= lw);
+  const roleCaps = { tank: w >= 6 ? 1 + Math.floor((w - 6) / 4) : 0, sniper: 1 + Math.floor(w / 4), shield: 1 + Math.floor(w / 3), exploder: 2 + Math.floor(w / 3) };
+  const caps = {}; for (const [k, t] of avail) if (roleCaps[t.role] != null) caps[k] = roleCaps[t.role];
   const q = [], counts = {};
   // guarantee a newly introduced type shows up on its first wave
-  const fresh = avail.find(([k, t]) => t.from === w && !isBoss);
+  const fresh = avail.find(([k, t]) => (t.from === lw || (w > 10 && t.from >= lw - 2 && t.from > 1)) && !isBoss);
   if (fresh) { q.push(fresh[0]); counts[fresh[0]] = 1; }
   while (q.length < count) {
-    const pool = avail.filter(([k]) => caps[k] == null || (counts[k] || 0) < caps[k]);
+    let pool = avail.filter(([k]) => caps[k] == null || (counts[k] || 0) < caps[k]);
+    if (!pool.length) pool = avail;
     const tot = pool.reduce((s, [, t]) => s + t.weight * (t.from === 1 ? Math.max(0.35, 1 - w * 0.04) : 1), 0);
     let r = Math.random() * tot, pickK = pool[0][0];
     for (const [k, t] of pool) { r -= t.weight * (t.from === 1 ? Math.max(0.35, 1 - w * 0.04) : 1); if (r <= 0) { pickK = k; break; } }
@@ -392,8 +438,11 @@ function startWave() {
   const { q, isBoss } = composeWave(run.wave);
   applyMutatorFx();
   waves.queue = q; waves.active = true; waves.spawnT = 1.2; waves.boss = isBoss; waves.bossPending = isBoss ? 2.5 : 0;
-  if (isBoss) { const def = BOSSES[(run.wave / 5 - 1) % 3]; ui.banner(def.name, `${def.title} · boss wave ${run.wave}`, 3, true); Music.play('boss'); run.bossDmgTaken = 0; }
-  else { const rm = roundMults(), mu = run.mutator && MUTATORS[run.mutator]; ui.banner(`Wave ${run.wave}`, mu ? `${mu.name} · ×${rm.wave.toFixed(1)} wave · ×${mu.reward} risk` : `${q.length} hostiles · ×${rm.wave.toFixed(1)} wave multiplier`); if (mu) ui.toast(`Round modifier: ${mu.name}`, `${mu.desc} Reward ×${mu.reward}${mu.coins ? ', coins ×' + mu.coins : ''}.`, 'drop'); Music.play('combat'); const nw = Object.values(ENEMY_TYPES).find(k => k.from === run.wave); if (nw) ui.toast(`New threat: ${nw.name}`, enemyTip(nw)); }
+  const fac = factionForWave(run.wave);
+  if (run.wave > 1 && (run.wave - 1) % 10 === 0) { ui.toast(`New enemy faction: ${fac.name}`, fac.desc, 'drop'); }
+  if (isBoss) { const def = bossDefForWave(run.wave); ui.banner(def.name, `${def.title} · boss wave ${run.wave}`, 3, true); Music.play('boss'); run.bossDmgTaken = 0; }
+  else { const rm = roundMults(), mu = run.mutator && MUTATORS[run.mutator]; ui.banner(`Wave ${run.wave}`, mu ? `${mu.name} · ×${rm.wave.toFixed(1)} wave · ×${mu.reward} risk` : `${q.length} hostiles · ×${rm.wave.toFixed(1)} wave multiplier`); if (mu) ui.toast(`Round modifier: ${mu.name}`, `${mu.desc} Reward ×${mu.reward}${mu.coins ? ', coins ×' + mu.coins : ''}.`, 'drop'); Music.play('combat'); const lw = factionLocalWave(run.wave); const nw = factionRoster(run.wave).map(k => ENEMY_TYPES[k]).find(k => k.from === lw || (run.wave > 10 && k.from >= lw - 2 && k.from > 1)); if (nw && (run.wave - 1) % 10 !== 0) ui.toast(`New threat: ${nw.name}`, enemyTip(nw)); }
+  if (run.wave > 1 && (run.wave - 1) % 10 === 0) ui.banner(fac.name, `Wave ${run.wave} · a new enemy faction attacks`, 3.2, true);
   SFX.siren();
 }
 function applyMutatorFx() {
@@ -402,7 +451,15 @@ function applyMutatorFx() {
   else { scene.fog.near = th.fog[1]; scene.fog.far = th.fog[2]; hemi.intensity = th.hemi[2]; sun.intensity = th.sun[1]; }
 }
 function enemyTip(k) {
-  return { Runner: 'Fast melee rusher. Keep moving and shoot early.', Drone: 'Flies erratically. Small target; the glowing eye is its head.', Marksman: 'Long-range shooter. A red laser means it is about to fire: break line of sight.', Bomber: 'Runs at you and self-destructs. Shoot the glowing core to detonate it early.', Juggernaut: 'Slow and very tough. Fires explosive orbs. Hit the purple back vent.', Bulwark: 'Its energy shield blocks frontal fire. Aim for the head or flank to hit the back cell.' }[k.name] || '';
+  return ({
+    'Goblin Archer': 'Arrows drop over distance; strafe and they miss.', Cutthroat: 'Fast dagger rusher. Shoot it before it closes in.',
+    'Fire Bat': 'Erratic flyer that spits fireballs. Its head is the small target.', 'Crossbow Hunter': 'A glowing aim line means a crossbow bolt is coming: break line of sight.',
+    'Powder Sapper': 'Carries a lit powder keg. Shoot the fuse to blow it up early.', 'Cave Troll': 'Huge and slow. Throws boulders; the glowing rune on its back is the weak spot.',
+    Shieldbearer: 'Its wooden shield stops bullets. Headshot it or hit the pouch on its back.',
+    'Bone Archer': 'Skeletal archers. Headshots shatter them.', Ghoul: 'Fast clawing rusher.', Wraith: 'Floating spirit that hurls soul bolts.',
+    Deadeye: 'Long-range marksman with a purple aim line.', Bloater: 'Shoot the glowing boils before it bursts next to you.',
+    'Bone Colossus': 'Throws soul orbs and bone shards. Weak spot on its back.', 'Death Knight': 'Tower shield in front, soul gem on its back.',
+  })[k.name] || { Runner: 'Fast melee rusher. Keep moving and shoot early.', Drone: 'Flies erratically. Small target; the glowing eye is its head.', Marksman: 'Long-range shooter. A red laser means it is about to fire: break line of sight.', Bomber: 'Runs at you and self-destructs. Shoot the glowing core to detonate it early.', Juggernaut: 'Slow and very tough. Fires explosive orbs. Hit the purple back vent.', Bulwark: 'Its energy shield blocks frontal fire. Aim for the head or flank to hit the back cell.' }[k.name] || '';
 }
 function updateWaves(dt) {
   const d = DIFFICULTY[run.diff];
@@ -519,6 +576,7 @@ function resetWorld() {
   grenades.forEach(n => scene.remove(n.m)); grenades.length = 0;
   pickups.forEach(k => scene.remove(k.g)); pickups.length = 0;
   debris.forEach(d => scene.remove(d.m)); debris.length = 0;
+  stuck.forEach(s => scene.remove(s.m)); stuck.length = 0;
   clearDecals(); resetBarrels(); hideDamageNumbers();
   for (const k in powerups) powerups[k] = 0;
 }
@@ -532,7 +590,7 @@ function startRun() {
   player.pos.copy(world.playerSpawn); player.vel.set(0, 0, 0);
   if (!pointFree(player.pos.x, player.pos.z, 0.5, player.pos.y + 0.1, player.pos.y + 1.7)) player.pos.y = topAt(player.pos.x, player.pos.z, 0.4);
   player.yaw = Math.atan2(player.pos.x, player.pos.z) || 0;
-  Object.assign(G, { cooldown: 0, reloading: false, switchT: 0, switchTo: -1, ads: 0, bloom: 0, recoilPitch: 0, pumpT: 1, nadeT: 0, burstLeft: 0 });
+  Object.assign(G, { cooldown: 0, reloading: false, switchT: 0, switchTo: -1, ads: 0, bloom: 0, pumpT: 1, nadeT: 0, burstLeft: 0 }); resetGunFeel();
   setupLoadout(true); WEAPONS.forEach(w => applySkin(w.id));
   waves.active = false; waves.queue = []; waves.inter = 3.5; waves.bossPending = 0;
   profile.stats.runs++; saveProfile();
@@ -649,9 +707,9 @@ function tick(dt) {
   if (state === 'playing') {
     run.time += dt; run.multiT = Math.max(0, run.multiT - dt);
     if (run.comboT > 0) { run.comboT -= dt; if (run.comboT <= 0) { run.comboT = 0; run.combo = 0; } }
-    updatePlayer(dt); updateWeapon(dt); updateStations(dt);
+    updatePlayer(dt); updateWeapon(dt); updateStations(dt); updateNav(dt);
     for (const e of enemies.slice()) if (!e.dead) e.update(dt);
-    updateBolts(dt); updateOrbs(dt); updateArcs(dt); updatePlasma(dt); updateGrenades(dt); updateBarrels(dt); updatePickups(dt); updateTurrets(dt); updateCoins(dt); updateDelayed(dt); updateWaves(dt);
+    updateBolts(dt); updateOrbs(dt); updateArcs(dt); updatePlasma(dt); updateGrenades(dt); updateBarrels(dt); updatePickups(dt); updateTurrets(dt); updateCoins(dt); updateDelayed(dt); updateStuck(dt); updateWaves(dt);
     updateCamera(dt); updateViewmodel(dt); ui.update(dt);
   } else if (state === 'dead') {
     deathT += dt; player.pitch = damp(player.pitch, -0.3, 3, dt); player.crouch = Math.min(1, player.crouch + dt * 1.5);

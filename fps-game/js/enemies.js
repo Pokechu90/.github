@@ -113,13 +113,13 @@ function buildDrone(k) {
 
 class Enemy {
   constructor(kind, p) {
-    this.kind = kind; this.k = ENEMY_TYPES[kind]; this.id = ++enemyId;
+    this.kind = kind; this.k = ENEMY_TYPES[kind]; this.role = this.k.role || kind; this.id = ++enemyId;
     const ws = waveScale(Math.max(1, run.wave));
     this.hpMax = Math.round(this.k.hp * ws.hp); this.hp = this.hpMax; this.speedMul = ws.speed; this.dmgMul = ws.dmg;
     this.flying = !!this.k.flying;
     this.body = { pos: p.clone(), vel: new V3(), radius: this.k.radius, height: this.k.height * (this.k.scale || 1), onGround: true };
     this.pos = this.body.pos;
-    this.m = this.flying ? buildDrone(this.k) : buildBot(kind, this.k);
+    this.m = this.k.faction === 'robots' ? (this.flying ? buildDrone(this.k) : buildBot(kind, this.k)) : (this.flying ? buildFlyer(kind, this.k) : buildCreature(kind, this.k));
     this.hitMeshes = this.m.hit;
     this.hitMeshes.forEach(h => h.userData.enemy = this);
     scene.add(this.m.g); this.m.g.position.copy(p);
@@ -127,10 +127,10 @@ class Enemy {
     this.fireT = rand(1.2, 2.6); this.losT = 0; this.los = false; this.strafe = Math.random() < .5 ? 1 : -1; this.strafeT = rand(1, 3);
     this.stuckT = 0; this.wanderT = 0; this.wander = new V3(); this.phase = Math.random() * 6; this.spawnT = 0; this.flashT = 0; this.meleeT = 0.8; this.burst = 0; this.burstT = 0; this.yaw = 0; this.charged = false; this.swing = 0; this.kick = 0; this.stunT = 0;
     this.armT = -1; this.beepT = 0; this.aimT = 0; this.dead = false; this.react = 0; this.lastDir = new V3(0, 0, 1);
-    this.mapColor = this.k.map; this.mapSize = kind === 'tank' ? 2 : 1.4;
-    if (kind === 'sniper') { this.beam = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.02, 1), new THREE.MeshBasicMaterial({ color: 0xff2a4a, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(this.beam); }
-    for (let i = 0; i < 40; i++) { tv.set(rand(-.3, .3), rand(0, 1), rand(-.3, .3)); FX.spawn(tv2.copy(p).add(tv).setY(p.y + rand(0, 3)), tv.set(0, rand(2, 6), 0), rand(.3, .8), .18, .02, COL.elec, COL.elecEnd, {}); }
-    SFX.warp(p);
+    this.mapColor = this.k.map; this.mapSize = this.role === 'tank' ? 2 : 1.4;
+    // marksmen show an aim line; healers show a beam to the boss they keep alive
+    if (this.role === 'sniper' || this.k.healer) { this.beam = new THREE.Mesh(new THREE.BoxGeometry(this.k.healer ? 0.06 : 0.02, this.k.healer ? 0.06 : 0.02, 1), new THREE.MeshBasicMaterial({ color: this.k.healer ? 0x5dff9a : (this.k.beam || 0xff2a4a), transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false })); scene.add(this.beam); }
+    enemySpawnFx(this.k, p);
   }
   eye(out) { return this.flying ? out.copy(this.pos) : out.copy(this.pos).setY(this.pos.y + this.body.height * 0.85); }
   center(out) { return this.flying ? out.copy(this.pos) : out.copy(this.pos).setY(this.pos.y + this.body.height * 0.55); }
@@ -163,13 +163,14 @@ class Enemy {
       if (!had && this.los && k.rate) this.fireT = Math.max(this.fireT, weaponRuntime().silenced ? 1.4 : 0.5);
     }
     let wx = 0, wz = 0, speed = k.speed * this.speedMul;
-    if (this.kind === 'runner' || this.kind === 'exploder') { if (dist > 1.6 && this.armT < 0) { wx = tx; wz = tz; } }
+    const [nx, nz] = this.navDir(tx, tz);
+    if (this.role === 'runner' || this.role === 'exploder') { if (dist > 1.6 && this.armT < 0) { wx = nx; wz = nz; } }
     else {
       this.strafeT -= dt; if (this.strafeT <= 0) { this.strafe *= -1; this.strafeT = rand(1.2, 3); }
-      if (!this.los || dist > k.pref[1]) { wx = tx; wz = tz; }
+      if (!this.los || dist > k.pref[1]) { wx = nx; wz = nz; }
       else if (dist < k.pref[0]) { wx = -tx * 0.8; wz = -tz * 0.8; }
-      else if (this.kind === 'sniper' && this.aimT > 0) { wx = wz = 0; }
-      else { wx = -tz * this.strafe; wz = tx * this.strafe; speed *= this.kind === 'shield' ? 0.4 : 0.55; if (this.kind === 'shield') { wx += tx * 0.6; wz += tz * 0.6; } }
+      else if (this.role === 'sniper' && this.aimT > 0) { wx = wz = 0; }
+      else { wx = -tz * this.strafe; wz = tx * this.strafe; speed *= this.role === 'shield' ? 0.4 : 0.55; if (this.role === 'shield') { wx += tx * 0.6; wz += tz * 0.6; } }
     }
     if (this.wanderT > 0) { this.wanderT -= dt; wx = this.wander.x; wz = this.wander.z; }
     else if (wx || wz) { const d = this.steer(wx, wz); wx = d[0]; wz = d[1]; }
@@ -181,32 +182,44 @@ class Enemy {
     const moved = Math.hypot(b.pos.x - px, b.pos.z - pz);
     if ((wx || wz) && moved < speed * dt * 0.25) { this.stuckT += dt; if (this.stuckT > 0.7) { this.stuckT = 0; this.wanderT = rand(0.8, 1.6); const a = Math.atan2(wz, wx) + (Math.random() < .5 ? 1 : -1) * rand(1.2, 2.2); this.wander.set(Math.cos(a), 0, Math.sin(a)); } }
     else this.stuckT = Math.max(0, this.stuckT - dt);
-    const face = (this.los || dist < 12 || this.kind === 'shield') ? Math.atan2(dx, dz) : (Math.abs(b.vel.x) + Math.abs(b.vel.z) > 0.3 ? Math.atan2(b.vel.x, b.vel.z) : this.yaw);
-    let dy = face - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); this.yaw += dy * Math.min(1, dt * (this.kind === 'shield' ? 5 : 8));
+    const face = (this.los || dist < 12 || this.role === 'shield') ? Math.atan2(dx, dz) : (Math.abs(b.vel.x) + Math.abs(b.vel.z) > 0.3 ? Math.atan2(b.vel.x, b.vel.z) : this.yaw);
+    let dy = face - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); this.yaw += dy * Math.min(1, dt * (this.role === 'shield' ? 5 : 8));
     m.g.position.copy(b.pos); m.g.rotation.y = this.yaw;
-    const sp = Math.hypot(b.vel.x, b.vel.z); this.phase += dt * sp * (this.kind === 'runner' || this.kind === 'exploder' ? 1.9 : 2.3);
+    const sp = Math.hypot(b.vel.x, b.vel.z); this.phase += dt * sp * (this.role === 'runner' || this.role === 'exploder' ? 1.9 : 2.3);
     const sw = Math.sin(this.phase) * Math.min(1, sp / 2) * 0.7;
     m.legs[0].rotation.x = sw; m.legs[1].rotation.x = -sw; m.hips.position.y = 0.95 + Math.abs(Math.cos(this.phase)) * 0.05 * Math.min(1, sp / 2);
-    if (this.kind === 'runner') { m.torso.rotation.x = 0.35; this.swing = Math.max(0, this.swing - dt * 4); m.arms[0].rotation.x = -sw * 1.2 - this.swing * 2.2; m.arms[1].rotation.x = sw * 1.2 - this.swing * 2.2; }
-    else if (this.kind === 'exploder') { m.torso.rotation.x = 0.25; m.arms[0].rotation.x = -sw; m.arms[1].rotation.x = sw; }
+    if (this.role === 'runner') { m.torso.rotation.x = 0.35; this.swing = Math.max(0, this.swing - dt * 4); m.arms[0].rotation.x = -sw * 1.2 - this.swing * 2.2; m.arms[1].rotation.x = sw * 1.2 - this.swing * 2.2; }
+    else if (this.role === 'exploder') { m.torso.rotation.x = 0.25; m.arms[0].rotation.x = -sw; m.arms[1].rotation.x = sw; }
     else if (m.gunTip) { const aimP = Math.atan2((player.pos.y + 1.3) - (b.pos.y + b.height * 0.75), dist); m.arms[1].rotation.x = -1.35 - (this.los ? aimP : 0) + this.kick; this.kick = Math.max(0, this.kick - dt * 3); }
     this.react = Math.max(0, this.react - dt * 5);
-    m.torso.rotation.x = (this.kind === 'runner' ? 0.35 : this.kind === 'exploder' ? 0.25 : 0) - this.react * 0.45; m.head.rotation.x = -this.react * 0.35; m.torso.rotation.z = this.react * 0.12 * (this.id % 2 ? 1 : -1);
+    m.torso.rotation.x = (this.role === 'runner' ? 0.35 : this.role === 'exploder' ? 0.25 : 0) - this.react * 0.45; m.head.rotation.x = -this.react * 0.35; m.torso.rotation.z = this.react * 0.12 * (this.id % 2 ? 1 : -1);
     if (!player.alive || this.spawnT < 1) return;
-    if (this.kind === 'runner') {
+    if (this.role === 'runner') {
       this.meleeT -= dt;
-      if (dist < 2.0 && Math.abs(player.pos.y - b.pos.y) < 1.4 && this.meleeT <= 0) { this.meleeT = 1.0; this.swing = 1; SFX.slash(b.pos); hurtPlayer(k.dmg * this.dmgMul, b.pos); }
+      if (dist < 2.0 && Math.abs(player.pos.y - b.pos.y) < 1.4 && this.meleeT <= 0) { this.meleeT = k.meleeRate || 1.0; this.swing = 1; SFX.slash(b.pos); hurtPlayer(k.dmg * this.dmgMul, b.pos); }
       return;
     }
-    if (this.kind === 'exploder') return this.updateExploder(dt, dist);
-    if (this.kind === 'sniper') return this.updateSniper(dt, dist);
+    if (k.healer) this.updateHealer(dt);
+    if (this.role === 'exploder') return this.updateExploder(dt, dist);
+    if (this.role === 'sniper') return this.updateSniper(dt, dist);
     if (this.burst > 0) { this.burstT -= dt; if (this.burstT <= 0) { this.fire(); this.burst--; this.burstT = 0.16; } }
     if (this.los && dist < 60) {
       this.fireT -= dt;
       const win = 0.45;
       if (this.fireT < win) { if (!this.charged) { this.charged = true; SFX.charge(b.pos); } const c = 1 - Math.max(0, this.fireT) / win; m.tipMat.opacity = 0.3 + c * 0.7; m.gunTip.scale.setScalar(1 + c * 1.4); }
-      if (this.fireT <= 0) { this.fireT = rand(k.rate[0], k.rate[1]) * (dist < 10 ? 0.8 : 1); this.resetTip(); if (this.kind === 'tank') this.fireTank(); else this.fire(); }
+      if (this.fireT <= 0) { this.fireT = rand(k.rate[0], k.rate[1]) * (dist < 10 ? 0.8 : 1); this.resetTip(); if (this.role === 'tank') this.fireTank(); else this.fire(); }
     } else { this.fireT = Math.max(this.fireT, 0.7); if (this.charged) this.resetTip(); }
+  }
+  updateHealer(dt) {
+    const tgt = boss && !boss.dead ? boss : null;
+    if (!tgt || this.stunT > 0) { this.beam.material.opacity = 0; return; }
+    this.m.gunTip.getWorldPosition(tv); tgt.center(tv2);
+    const d = tv.distanceTo(tv2);
+    if (d > 30) { this.beam.material.opacity = 0; return; }
+    tgt.hp = Math.min(tgt.hpMax, tgt.hp + tgt.hpMax * 0.006 * dt); tgt.healedT = 0.2;
+    this.beam.position.lerpVectors(tv, tv2, 0.5); this.beam.lookAt(tv2); this.beam.scale.set(1, 1, d);
+    this.beam.material.opacity = 0.35 + Math.sin(time * 12) * 0.15;
+    if (Math.random() < 0.3) FX.spawn(tv2, tv3.set(rand(-1, 1), rand(1, 2), rand(-1, 1)), 0.6, 0.25, 0.02, COL.green, COL.ichorEnd, {});
   }
   resetTip() { this.charged = false; if (this.m.tipMat) { this.m.tipMat.opacity = 0.3; this.m.gunTip.scale.setScalar(1); } }
   updateExploder(dt, dist) {
@@ -237,8 +250,9 @@ class Enemy {
         beam.material.opacity = 0; m.tipMat.opacity = 0.3;
         const dir = tv3.subVectors(this.aimTarget, tv).normalize();
         dir.x += rand(-1, 1) * 0.006; dir.y += rand(-1, 1) * 0.004; dir.z += rand(-1, 1) * 0.006; dir.normalize();
-        spawnBolt(tv, dir, this.k.dmg * this.dmgMul, { speed: 130, color: 0xff2a6a, core: 0xffd0dc, size: 0.8 });
-        SFX.laser(this.pos, 'sniper'); this.kick = 0.5;
+        if (this.k.proj) fireProjectile(tv.clone(), tv2.copy(tv).addScaledVector(dir, tv.distanceTo(this.aimTarget)), this.k.dmg * this.dmgMul, this.k.proj);
+        else { spawnBolt(tv, dir, this.k.dmg * this.dmgMul, { speed: 130, color: 0xff2a6a, core: 0xffd0dc, size: 0.8 }); SFX.laser(this.pos, 'sniper'); }
+        this.kick = 0.5;
         this.fireT = rand(2.2, 3.2);
       }
       return;
@@ -272,6 +286,7 @@ class Enemy {
     const face = Math.atan2(dx, dz); let dy = face - this.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); this.yaw += dy * Math.min(1, dt * 6);
     m.g.rotation.set(this.body.vel.z * 0.03, this.yaw, -this.body.vel.x * 0.03);
     m.rotors.forEach((r, i) => r.rotation.y += dt * (30 + i));
+    if (m.wings) { const f = Math.sin(time * (this.k.faction === 'undead' ? 4 : 16) + this.id) * (this.k.faction === 'undead' ? 0.4 : 0.8); m.wings[0].rotation.z = f; m.wings[1].rotation.z = -f; }
     if (this.react > 0) { this.react = Math.max(0, this.react - dt * 5); m.g.rotation.x += this.react * 0.7; m.g.rotation.z += this.react * 0.4; }
     if (!player.alive || this.spawnT < 1) return;
     if (this.los && dist < 45) {
@@ -280,13 +295,30 @@ class Enemy {
       if (this.fireT <= 0) { this.fireT = rand(k.rate[0], k.rate[1]); m.tipMat.opacity = 0.3; this.fire(); }
     } else this.fireT = Math.max(this.fireT, 0.6);
   }
+  // a probe point is walkable if the floor there is at most `rise` above our feet and there is head room above it
+  walkable(x, z, rise) {
+    const b = this.body, r = b.radius * 0.6;
+    const g = groundAt(x, z, b.pos.y + rise, r);
+    return pointFree(x, z, r, g + 0.06, g + b.height * 0.9);
+  }
   steer(wx, wz) {
     const b = this.body, base = Math.atan2(wz, wx), offs = [0, 0.55, -0.55, 1.1, -1.1, 1.7, -1.7, 2.4, -2.4];
     for (const o of offs) {
       const a = base + o * (this.strafe > 0 ? 1 : -1), cx = Math.cos(a), cz = Math.sin(a);
-      if (pointFree(b.pos.x + cx * 1.4, b.pos.z + cz * 1.4, b.radius + 0.05, b.pos.y + 0.56, b.pos.y + b.height) && pointFree(b.pos.x + cx * 0.6, b.pos.z + cz * 0.6, b.radius, b.pos.y + 0.56, b.pos.y + b.height)) return [cx, cz];
+      // steps up to 0.55 m high count as walkable, so stairs no longer look like walls
+      if (this.walkable(b.pos.x + cx * 0.6, b.pos.z + cz * 0.6, 0.6) && this.walkable(b.pos.x + cx * 1.4, b.pos.z + cz * 1.4, 1.2)) return [cx, cz];
     }
     return [wx, wz];
+  }
+  // direction to walk toward the player: straight when close on the same level, otherwise along the nav flow field
+  navDir(tx, tz) {
+    const b = this.body;
+    if (this.dist < 3 && Math.abs(player.pos.y - b.pos.y) < 0.8) return [tx, tz];
+    const wp = navNext(b.pos, this.navWp || (this.navWp = new V3()));
+    if (!wp) return [tx, tz];
+    const dx = wp.x - b.pos.x, dz = wp.z - b.pos.z, d = Math.hypot(dx, dz);
+    if (d < 0.05) return [tx, tz];
+    return [dx / d, dz / d];
   }
   fire() {
     const m = this.m; m.gunTip.getWorldPosition(tv);
@@ -294,14 +326,18 @@ class Enemy {
     const dist = tv.distanceTo(target); target.addScaledVector(player.vel, dist / this.k.boltSpeed * 0.6);
     const inacc = this.k.acc * (1 + Math.hypot(player.vel.x, player.vel.z) * 0.08);
     target.x += rand(-1, 1) * dist * inacc; target.y += rand(-1, 1) * dist * inacc * 0.6; target.z += rand(-1, 1) * dist * inacc;
-    const style = this.kind === 'drone' ? { speed: this.k.boltSpeed, color: 0x40ffd0, core: 0xd0fff4, size: 0.6 } : this.kind === 'shield' ? { speed: this.k.boltSpeed, color: 0x7cc8ff, core: 0xe0f4ff } : { speed: this.k.boltSpeed };
+    this.kick = 0.35;
+    if (this.k.proj) { fireProjectile(tv.clone(), target.clone(), this.k.dmg * this.dmgMul, this.k.proj, this.k.boltSpeed); return; }
+    const style = this.role === 'drone' ? { speed: this.k.boltSpeed, color: 0x40ffd0, core: 0xd0fff4, size: 0.6 } : this.role === 'shield' ? { speed: this.k.boltSpeed, color: 0x7cc8ff, core: 0xe0f4ff } : { speed: this.k.boltSpeed };
     spawnBolt(tv, target.sub(tv).normalize(), this.k.dmg * this.dmgMul, style);
-    this.kick = 0.35; SFX.laser(this.pos, this.kind === 'drone' ? 'drone' : 'grunt');
+    SFX.laser(this.pos, this.role === 'drone' ? 'drone' : 'grunt');
     FX.spawn(tv, tv3.set(0, 0, 0), 0.1, 0.5, 0.1, new THREE.Color(this.k.glow), COL.white, {});
   }
   fireTank() {
     const m = this.m; m.gunTip.getWorldPosition(tv);
     const target = playerAim(tv2, 0.4);
+    if (this.k.faction === 'goblins') { spawnOrb(tv, tv3.subVectors(target, tv).normalize(), 22, this.k.dmg * this.dmgMul, 3.2, 0xc08a50); SFX.growl(this.pos); SFX.whoosh(this.pos); this.kick = 0.6; return; }
+    if (this.k.faction === 'undead') { spawnOrb(tv, tv3.subVectors(target, tv).normalize(), 24, this.k.dmg * this.dmgMul, 3.2, 0xc070ff); for (let i = 0; i < 3; i++) { const t2 = playerAim(tv4); t2.x += rand(-1.5, 1.5); t2.z += rand(-1.5, 1.5); fireProjectile(tv.clone(), t2.clone(), 6 * this.dmgMul, 'bonearrow', 30); } this.kick = 0.6; return; }
     spawnOrb(tv, tv3.subVectors(target, tv).normalize(), 24, this.k.dmg * this.dmgMul, 3.2, 0xc040ff);
     for (let i = 0; i < 3; i++) { const d = tv3.subVectors(playerAim(tv4), tv).normalize(); d.x += rand(-0.08, 0.08); d.y += rand(-0.03, 0.05); d.z += rand(-0.08, 0.08); spawnBolt(tv, d.normalize(), 6 * this.dmgMul, { speed: 36, color: 0xc040ff, core: 0xf0c0ff, size: 0.8 }); }
     this.kick = 0.6; SFX.laser(this.pos, 'heavy');
@@ -316,8 +352,8 @@ class Enemy {
     this.react = Math.min(1, this.react + 0.3 + amount / this.hpMax * 1.5);
     if (info.dir && this.body && !this.flying) { const k = Math.min(4, amount * 0.05); this.body.vel.x += info.dir.x * k; this.body.vel.z += info.dir.z * k; }
     else if (info.dir && this.flying) this.body.vel.addScaledVector(info.dir, Math.min(5, amount * 0.08));
-    if (this.kind === 'grunt' && Math.random() < 0.3) this.strafe *= -1;
-    if (this.kind === 'exploder' && info.part === 'weak' && this.hp > 0) { this.hp = 0; }
+    if (this.role === 'grunt' && Math.random() < 0.3) this.strafe *= -1;
+    if (this.role === 'exploder' && info.part === 'weak' && this.hp > 0) { this.hp = 0; }
     if (this.hp <= 0) { this.die(info); return { dealt, killed: true }; }
     return { dealt, killed: false };
   }
@@ -326,29 +362,30 @@ class Enemy {
     const i = enemies.indexOf(this); if (i >= 0) enemies.splice(i, 1);
     if (this.beam) scene.remove(this.beam);
     const p = this.center(new V3());
-    SFX.botDie(p);
+    const robot = this.k.faction === 'robots';
     const dir = info.dir || tv.set(0, 1, 0);
     const meshes = []; this.m.g.traverse(o => { if (o.isMesh) meshes.push(o); });
     this.m.g.updateMatrixWorld(true);
     this.m.glow.color.setHex(0x111111); if (this.m.tipMat) this.m.tipMat.opacity = 0;
-    this.m.body.emissive.setHex(0x000000); this.m.body.color.multiplyScalar(0.55);
+    this.m.body.emissive.setHex(0x000000); this.m.body.color.multiplyScalar(robot ? 0.55 : 0.8);
     for (const o of meshes) {
       const pr = o.geometry.parameters || {};
       if (o.material === energyMat || ((pr.width || 1) < 0.1 && (pr.height || 1) < 0.1)) { o.parent.remove(o); continue; }
       scene.attach(o);
       const v = new V3(rand(-2, 2), rand(2.5, 6), rand(-2, 2)).addScaledVector(dir, rand(3, 7));
       const popHead = (o === this.m.head || o === this.m.eye) && info.part === 'head';
-      if (popHead) { v.set(rand(-1, 1), rand(8, 11), rand(-1, 1)).addScaledVector(dir, 2.5); for (let i = 0; i < 24; i++) FX.spawn(o.getWorldPosition(tv3), tv2.set(rand(-1.5, 1.5), rand(3, 8), rand(-1.5, 1.5)), rand(0.3, 0.7), 0.12, 0.02, COL.elec, COL.elecEnd, { grav: 12 }); }
-      debris.push({ m: o, v, w: popHead ? new V3(rand(-20, 20), rand(-20, 20), rand(-20, 20)) : new V3(rand(-8, 8), rand(-8, 8), rand(-8, 8)), t: rand(3, 4.5), spark: o === this.m.torso || o === this.m.head || o === this.m.eye });
+      const pc = robot ? [COL.elec, COL.elecEnd] : this.k.faction === 'goblins' ? [COL.ichor, COL.ichorEnd] : [COL.bone, COL.boneEnd];
+      if (popHead) { v.set(rand(-1, 1), rand(8, 11), rand(-1, 1)).addScaledVector(dir, 2.5); for (let i = 0; i < 24; i++) FX.spawn(o.getWorldPosition(tv3), tv2.set(rand(-1.5, 1.5), rand(3, 8), rand(-1.5, 1.5)), rand(0.3, 0.7), 0.12, 0.02, pc[0], pc[1], { grav: 12 }); }
+      debris.push({ m: o, v, w: popHead ? new V3(rand(-20, 20), rand(-20, 20), rand(-20, 20)) : new V3(rand(-8, 8), rand(-8, 8), rand(-8, 8)), t: rand(3, 4.5), spark: robot && (o === this.m.torso || o === this.m.head || o === this.m.eye) });
     }
     scene.remove(this.m.g);
-    sparks(p, 30, null, 9, COL.elec, COL.elecEnd); sparks(p, 20, null, 6); puff(p, 8, null, COL.smoke, 0.8, 1.6);
-    if (this.kind === 'exploder') {
+    enemyDeathFx(this, p);
+    if (this.role === 'exploder') {
       const src = this.selfDestruct ? null : info.source;
-      explosion(p, 5, this.k.dmg * this.dmgMul, { hurtsPlayer: true, owner: src === 'self' || !src ? 'enemy' : 'player', enemyDamage: this.selfDestruct ? 30 : 60, color: 0xffe030 });
+      explosion(p, 5, this.k.dmg * this.dmgMul, { hurtsPlayer: true, owner: src === 'self' || !src ? 'enemy' : 'player', enemyDamage: this.selfDestruct ? 30 : 60, color: this.k.boom || 0xffe030 });
     }
-    if (this.kind === 'tank') explosion(p, 3.5, 20, { hurtsPlayer: true, owner: 'player', enemyDamage: 40 });
-    if (run.mutator === 'volatile' && this.kind !== 'exploder' && !this.selfDestruct) delayedBlast(p.clone(), 0.8, 2.8, 14 * this.dmgMul);
+    if (this.role === 'tank') explosion(p, 3.5, 20, { hurtsPlayer: true, owner: 'player', enemyDamage: 40 });
+    if (run.mutator === 'volatile' && this.role !== 'exploder' && !this.selfDestruct) delayedBlast(p.clone(), 0.8, 2.8, 14 * this.dmgMul);
     if (!this.selfDestruct) onEnemyKilled(this, info);
   }
 }
@@ -563,7 +600,7 @@ class HiveBoss extends BossBase {
     this.group.updateMatrixWorld(true);
     // drones
     this.droneT -= dt;
-    if (this.droneT <= 0) { this.droneT = this.phase === 3 ? 6 : 8; const alive = enemies.filter(e => e.kind === 'drone').length; for (let i = 0; i < 2 && alive + i < 6; i++) { const e = new Enemy('drone', tv.copy(this.pos).add(tv2.set(rand(-3, 3), -2 * this.scale, rand(-3, 3)))); e.pos.y = this.pos.y - 1.5 * this.scale; enemies.push(e); } }
+    if (this.droneT <= 0) { this.droneT = this.phase === 3 ? 6 : 8; const alive = enemies.filter(e => e.role === 'drone').length; for (let i = 0; i < 2 && alive + i < 6; i++) { const e = new Enemy('drone', tv.copy(this.pos).add(tv2.set(rand(-3, 3), -2 * this.scale, rand(-3, 3)))); e.pos.y = this.pos.y - 1.5 * this.scale; enemies.push(e); } }
     // bolt rain from the eye
     this.rainT -= dt;
     if (this.rainT <= 0) {
@@ -701,15 +738,16 @@ class BulwarkBoss extends BossBase {
   }
 }
 function spawnBoss(wave) {
-  const idx = (wave / 5 - 1) % 3, cycle = Math.floor((wave / 5 - 1) / 3);
+  const def = bossDefForWave(wave), cycle = Math.floor((wave / 5 - 1) / 3);
   const far = world.spawnPoints.slice().sort((a, b) => b.distanceTo(player.pos) - a.distanceTo(player.pos));
   const p = (far[0] || new V3(0, 0, -world.half * 0.6)).clone();
   p.multiplyScalar(0.8); p.y = 0;
-  const cls = [TitanBoss, HiveBoss, BulwarkBoss][idx];
-  if (idx !== 1) { for (let tries = 0; tries < 20 && !pointFree(p.x, p.z, 3.5, 0, 6); tries++) p.set(rand(-1, 1) * world.half * 0.6, 0, rand(-1, 1) * world.half * 0.6); }
-  boss = new cls(p, cycle);
+  if (def.id !== 'hive') { const r = def.faction === 'robots' ? 3.5 : 1.5; for (let tries = 0; tries < 20 && !pointFree(p.x, p.z, r, 0, 4); tries++) p.set(rand(-1, 1) * world.half * 0.6, 0, rand(-1, 1) * world.half * 0.6); }
+  boss = new BOSS_CLASSES[def.id](p, cycle);
   enemies.push(boss);
-  for (let i = 0; i < 60; i++) FX.spawn(tv.copy(p).add(tv2.set(rand(-3, 3), rand(0, 8), rand(-3, 3))), tv2.set(0, rand(3, 9), 0), rand(.5, 1.2), .4, .05, COL.red, COL.redEnd, {});
+  const pc = def.faction === 'goblins' ? [COL.ichor, COL.ichorEnd] : def.faction === 'undead' ? [COL.wisp, COL.wispEnd] : [COL.red, COL.redEnd];
+  for (let i = 0; i < 60; i++) FX.spawn(tv.copy(p).add(tv2.set(rand(-3, 3), rand(0, 8), rand(-3, 3))), tv2.set(0, rand(3, 9), 0), rand(.5, 1.2), .4, .05, pc[0], pc[1], {});
   SFX.bossAlarm(); SFX.roar(p);
+  if (def.id === 'elder') { boss.summonT = 0.8; }
   return boss;
 }

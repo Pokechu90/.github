@@ -34,6 +34,27 @@ function damageEnemy(e, base, info) {
 // ---------------- enemy projectiles ----------------
 const boltGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.2, 6); boltGeo.rotateX(Math.PI / 2);
 const boltPool = [], bolts = [];
+// solid projectile models (arrows, thrown daggers, bone shards), reused by the bolt pool
+const solidMats = { wood: new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.8 }), steel: new THREE.MeshStandardMaterial({ color: 0xb8c0c8, roughness: 0.3, metalness: 0.9 }), fletch: new THREE.MeshStandardMaterial({ color: 0xb03a28, roughness: 0.9, side: THREE.DoubleSide }), bone: new THREE.MeshStandardMaterial({ color: 0xe0d8c0, roughness: 0.7 }), leather: new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.9 }) };
+function solidModel(kind) {
+  const g = new THREE.Group();
+  const add = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.x = rx; g.add(m); return m; };
+  if (kind === 'dagger') {
+    add(new THREE.BoxGeometry(0.035, 0.008, 0.26), solidMats.steel, 0, 0, 0.08); add(new THREE.BoxGeometry(0.08, 0.02, 0.02), solidMats.steel, 0, 0, -0.06); add(new THREE.CylinderGeometry(0.013, 0.013, 0.1, 6), solidMats.leather, 0, 0, -0.12, Math.PI / 2);
+  } else {
+    const shaftMat = kind === 'bone' ? solidMats.bone : solidMats.wood;
+    add(new THREE.CylinderGeometry(0.011, 0.011, 0.78, 5), shaftMat, 0, 0, 0, Math.PI / 2);
+    add(new THREE.ConeGeometry(0.028, 0.09, 6), kind === 'bone' ? solidMats.bone : solidMats.steel, 0, 0, 0.43, Math.PI / 2);
+    for (const r of [0, Math.PI / 2]) { const f = add(new THREE.PlaneGeometry(0.05, 0.13), solidMats.fletch, 0, 0, -0.33, Math.PI / 2); f.rotation.y = r; }
+  }
+  return g;
+}
+const stuck = [];
+function stickProjectile(kind, p, dir) {
+  const m = solidModel(kind); m.position.copy(p).addScaledVector(dir, 0.12); m.lookAt(tv4.copy(m.position).add(dir)); scene.add(m);
+  stuck.push({ m, t: 8 }); if (stuck.length > 40) scene.remove(stuck.shift().m);
+}
+function updateStuck(dt) { for (let i = stuck.length - 1; i >= 0; i--) { if ((stuck[i].t -= dt) <= 0) { scene.remove(stuck[i].m); stuck.splice(i, 1); } } }
 function spawnBolt(p, dir, dmg, style = {}) {
   let bo = boltPool.find(x => !x.alive);
   if (!bo) {
@@ -45,6 +66,11 @@ function spawnBolt(p, dir, dmg, style = {}) {
   bo.core.material.color.setHex(style.core ?? 0xffc0a0); bo.glow.material.color.setHex(col); bo.col.setHex(col);
   bo.glow.scale.set(1.3 * size, 1.3 * size, 1); bo.core.scale.set(size, size, size);
   bo.alive = true; bo.g.visible = true; bo.pos.copy(p); bo.vel.copy(dir).multiplyScalar(style.speed ?? 42); bo.t = 0; bo.dmg = dmg; bo.whizzed = false;
+  bo.grav = style.grav || 0; bo.solid = style.solid || null; bo.trail = style.trail ?? !bo.solid; bo.trailCol = style.trailCol || null;
+  if (bo.solidModel && bo.solidKind !== bo.solid) { bo.g.remove(bo.solidModel); bo.solidModel = null; }
+  if (bo.solid && !bo.solidModel) { bo.solidModel = solidModel(bo.solid); bo.solidKind = bo.solid; bo.g.add(bo.solidModel); }
+  if (bo.solidModel) bo.solidModel.visible = !!bo.solid;
+  bo.core.visible = !bo.solid; bo.glow.visible = !bo.solid;
   bo.g.position.copy(p); bo.g.lookAt(tv.copy(p).add(bo.vel)); bolts.push(bo);
 }
 function hitsPlayer(p, r = 0.5) {
@@ -58,18 +84,21 @@ function updateBolts(dt) {
     const bo = bolts[i]; bo.t += dt; let dead = bo.t > 3.5;
     for (let s = 1; s <= 3 && !dead; s++) {
       tv.copy(bo.pos).addScaledVector(bo.vel, dt * s / 3);
-      if (hitsPlayer(tv)) { hurtPlayer(bo.dmg, bo.pos); dead = true; sparks(tv, 8, null, 4, COL.red, COL.redEnd); break; }
+      if (hitsPlayer(tv)) { hurtPlayer(bo.dmg, bo.pos); dead = true; if (bo.solid) SFX.thud(tv); else sparks(tv, 8, null, 4, COL.red, COL.redEnd); break; }
       const c = pointInCollider(tv);
       if (c || tv.y < (world.floor || 0) || tv.y > world.ceiling) {
         dead = true; const n = c && tv.y > 0.05 ? colliderNormal(c, tv, tv2) : tv2.set(0, 1, 0);
-        sparks(tv, 10, n, 5, bo.col, COL.redEnd); puff(tv, 2, n, COL.smoke, 0.3, 0.6); SFX.zap(tv);
+        if (bo.solid) { puff(tv, 2, n, COL.dust, 0.2, 0.5); SFX.thud(tv); if (c && bo.solid !== 'bone') stickProjectile(bo.solid, tv, tv3.copy(bo.vel).normalize()); }
+        else { sparks(tv, 10, n, 5, bo.col, COL.redEnd); puff(tv, 2, n, COL.smoke, 0.3, 0.6); SFX.zap(tv); }
         if (c && c.mesh && c.mesh.userData.barrel) damageBarrel(c.mesh.userData.barrel, bo.dmg);
         break;
       }
     }
     if (!dead) {
+      if (bo.grav) { bo.vel.y -= bo.grav * dt; bo.g.lookAt(tv.copy(bo.pos).add(bo.vel)); }
       bo.pos.addScaledVector(bo.vel, dt); bo.g.position.copy(bo.pos);
-      if (Math.random() < 0.6) FX.spawn(bo.pos, tv.set(0, 0, 0), 0.18, 0.22, 0.02, bo.col, COL.redEnd, {});
+      if (bo.solid === 'dagger') bo.solidModel.rotation.x += dt * 22; else if (bo.solid) bo.solidModel.rotation.z += dt * 6;
+      if (bo.trail && Math.random() < 0.6) FX.spawn(bo.pos, tv.set(0, 0, 0), 0.18, 0.22, 0.02, bo.trailCol || bo.col, COL.redEnd, {});
       if (!bo.whizzed && player.alive && bo.pos.distanceTo(eye) < 2.2) { bo.whizzed = true; SFX.whiz(); }
     }
     if (dead) { bo.alive = false; bo.g.visible = false; bolts.splice(i, 1); }
@@ -380,7 +409,7 @@ function onEnemyKilled(e, info) {
   if (info.source === 'explosion' || info.source === 'airstrike') { profile.stats.explosiveKills++; questEvent('explosiveKill'); }
   run.multi = run.multiT > 0 ? run.multi + 1 : 1; run.multiT = 1.6;
   run.combo++; run.comboT = COMBO_WINDOW; run.bestCombo = Math.max(run.bestCombo, run.combo);
-  questEvent('killType', 1, { type: e.kind }); questEvent('combo', run.combo);
+  questEvent('killType', 1, { type: e.role || e.kind }); questEvent('combo', run.combo);
   if (head && !reduceMotion) hitStop = Math.max(hitStop, 0.045);
   // killstreak rewards
   run.killstreak++;
@@ -397,9 +426,9 @@ function onEnemyKilled(e, info) {
   }
   if (run.multi >= 2) ui.streak(['', '', 'Double kill', 'Triple kill', 'Quad kill'][run.multi] || 'Rampage');
   ui.killfeed(weaponShortName(weapon), e.isBoss ? e.name : `${k.name}-${String(e.id % 100).padStart(2, '0')}`, head);
-  if (k && e.kind !== 'exploder') {
+  if (k && e.role !== 'exploder') {
     const r = Math.random();
-    if (e.kind === 'tank' || r < 0.12) spawnPickup('health', p);
+    if (e.role === 'tank' || r < 0.12) spawnPickup('health', p);
     else if (r < 0.36) spawnPickup('ammo', p);
     else if (r < 0.41) spawnPickup('armor', p);
     else if (r < 0.46) spawnPickup(pick(['pu_damage', 'pu_speed', 'pu_ammo']), p);
