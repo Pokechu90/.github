@@ -431,13 +431,16 @@ function disposeGroup(g) {
   g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   scene.remove(g);
 }
+function wantedMode() { return profile.mode === 'halloween' && halloweenActive() ? 'halloween' : 'standard'; }
 function loadMap(id) {
   const m = MAP_BY_ID[id] || MAPS[0];
   if (world.group) disposeGroup(world.group);
   world.group = new THREE.Group(); scene.add(world.group);
   world.colliders.length = 0; world.levelMeshes.length = 0; world.barrels.length = 0; world.anim.length = 0; world.emitters.length = 0;
   world.map = m; world.half = m.half; world.ceiling = m.ceiling || Infinity;
-  const th = m.theme;
+  world.mode = wantedMode();
+  // Night of Terror re-lights every map under a blood moon; the underground lab gets a purple haze instead
+  const th = world.mode !== 'halloween' ? m.theme : Object.assign({}, m.theme, m.theme.sky ? HALLOWEEN_THEME : { fog: [0x140a18, 14, 70], background: 0x07040a, hemi: [0x9a7aca, 0x1a0e10, 0.85], sun: [0xc0a8ff, 0.45] });
   scene.fog.color.setHex(th.fog[0]); scene.fog.near = th.fog[1]; scene.fog.far = th.fog[2];
   if (th.sky) { sky.visible = true; scene.background = null; skyUniforms.top.value.setHex(th.sky[0]); skyUniforms.mid.value.setHex(th.sky[1]); skyUniforms.hor.value.setHex(th.sky[2]); }
   else { sky.visible = false; scene.background = new THREE.Color(th.background); }
@@ -448,6 +451,7 @@ function loadMap(id) {
   fill.intensity = th.fill; renderer.toneMappingExposure = th.exposure;
   const b = m.half + 12; Object.assign(sun.shadow.camera, { left: -b, right: b, top: b, bottom: -b }); sun.shadow.camera.updateProjectionMatrix();
   m.build();
+  if (world.mode === 'halloween') decorateHalloween(m);
   buildStations(m);
   mergeStatic();
   buildNav();

@@ -36,9 +36,11 @@ const FACTIONS = [
   { id: 'goblins', name: 'Goblin warband', desc: 'Archers, dagger rushers, fire bats and cave trolls. Their Elder fights with two blades.', bosses: ['elder'] },
   { id: 'undead', name: 'Restless dead', desc: 'Bone archers, ghouls, wraiths and death knights, led by a Lich.', bosses: ['lich'] },
 ];
-function factionForWave(w) { return FACTIONS[Math.floor((Math.max(1, w) - 1) / 10) % FACTIONS.length]; }
+const ERA_FACTIONS = FACTIONS.slice();
+// standard mode rotates robots, goblins and undead every 10 waves; Night of Terror is all Halloween monsters
+function factionForWave(w) { if (run.mode === 'halloween') return FACTION_HALLOWEEN; return ERA_FACTIONS[Math.floor((Math.max(1, w) - 1) / 10) % ERA_FACTIONS.length]; }
 // the faction's local wave decides which of its troops have arrived; later eras bring them in sooner
-function factionLocalWave(w) { const local = ((Math.max(1, w) - 1) % 10) + 1; return w > 10 ? Math.min(10, local * 2 + 1) : local; }
+function factionLocalWave(w) { if (run.mode === 'halloween') return Math.min(10, w); const local = ((Math.max(1, w) - 1) % 10) + 1; return w > 10 ? Math.min(10, local * 2 + 1) : local; }
 function factionRoster(w) { const f = factionForWave(w).id; return Object.keys(ENEMY_TYPES).filter(k => ENEMY_TYPES[k].faction === f && ENEMY_TYPES[k].weight > 0); }
 
 // ---------------- projectile looks and sounds per faction ----------------
@@ -66,19 +68,29 @@ function fireProjectile(from, target, dmg, name, speedOverride) {
 }
 
 // ---------------- hit and death effects ----------------
+// Night of Terror monsters pick their effects by material: bone, flesh, pumpkin, ghost or blood
+const SPOOK_FX = {
+  bone: [() => COL.bone, () => COL.boneEnd, p => SFX.rattle(p)], flesh: [() => COL.ichor, () => COL.ichorEnd, p => SFX.growl(p)],
+  pumpkin: [() => COL.amber, () => COL.fireEnd, p => SFX.thud(p)], ghost: [() => COL.teal, () => COL.wispEnd, p => SFX.wail(p)], blood: [() => COL.red, () => COL.redEnd, p => SFX.squeal(p)],
+};
 function enemyHitFx(en, point, n, part) {
+  const sf = en && en.k && SPOOK_FX[en.k.fx];
+  if (sf) { sparks(point, part === 'head' ? 10 : 5, n, 4, sf[0](), sf[1]()); puff(point, 1, n, COL.dust, 0.2, 0.5); return; }
   const f = en && en.k ? en.k.faction : (en && en.faction) || 'robots';
   if (f === 'goblins') { sparks(point, part === 'head' ? 10 : 5, n, 4, COL.ichor, COL.ichorEnd); puff(point, 1, n, COL.dust, 0.2, 0.5); }
   else if (f === 'undead') { sparks(point, part === 'head' ? 10 : 5, n, 5, COL.bone, COL.boneEnd); sparks(point, 3, n, 2, COL.wisp, COL.wispEnd); puff(point, 1, n, COL.dust, 0.2, 0.5); }
   else { sparks(point, part === 'head' ? 12 : 6, n, 7, COL.elec, COL.elecEnd); sparks(point, 3, n, 5); if (Math.random() < 0.4) SMOKE.spawn(point, tv2.copy(n).multiplyScalar(1.5), 0.6, 0.1, 0.5, COL.oil, COL.smoke, { grav: 5, alpha: 0.8 }); }
 }
 function enemyDeathFx(e, p) {
+  const sf = SPOOK_FX[e.k.fx];
+  if (sf) { sf[2](p); sparks(p, 24, null, 6, sf[0](), sf[1]()); puff(p, 8, null, e.k.fx === 'ghost' ? COL.teal : COL.dust, 0.7, 1.4); if (e.k.fx === 'ghost' || e.k.fx === 'bone') for (let i = 0; i < 16; i++) FX.spawn(tv.copy(p).add(tv2.set(rand(-.4, .4), rand(-.5, .6), rand(-.4, .4))), tv2.set(rand(-.5, .5), rand(1, 3), rand(-.5, .5)), rand(.6, 1.2), .3, .02, COL.wisp, COL.wispEnd, { drag: 1 }); return; }
   const f = e.k.faction;
   if (f === 'goblins') { SFX.squeal(p); sparks(p, 22, null, 6, COL.ichor, COL.ichorEnd); puff(p, 8, null, COL.dust, 0.7, 1.4); if (e.role === 'tank') SFX.growl(p); }
   else if (f === 'undead') { SFX.rattle(p); sparks(p, 24, null, 6, COL.bone, COL.boneEnd); for (let i = 0; i < 20; i++) FX.spawn(tv.copy(p).add(tv2.set(rand(-.4, .4), rand(-.5, .6), rand(-.4, .4))), tv2.set(rand(-.5, .5), rand(1, 3), rand(-.5, .5)), rand(.6, 1.2), .3, .02, COL.wisp, COL.wispEnd, { drag: 1 }); puff(p, 8, null, COL.dust, 0.7, 1.4); }
   else { SFX.botDie(p); sparks(p, 30, null, 9, COL.elec, COL.elecEnd); sparks(p, 20, null, 6); puff(p, 8, null, COL.smoke, 0.8, 1.6); }
 }
 function enemySpawnFx(k, p) {
+  if (k.faction === 'halloween') { puff(tv.copy(p).setY(p.y + 0.2), 10, tv2.set(0, 1, 0), COL.dust, 0.6, 1.1); for (let i = 0; i < 20; i++) FX.spawn(tv.copy(p).add(tv2.set(rand(-.5, .5), rand(0, .3), rand(-.5, .5))), tv2.set(0, rand(1.5, 4), 0), rand(.5, 1), .25, .02, COL.purple, COL.wispEnd, {}); if (Math.random() < 0.3) (k.fx === 'bone' ? SFX.rattle : k.fx === 'ghost' ? SFX.wail : SFX.growl)(p); return; }
   if (k.faction === 'goblins') { puff(tv.copy(p).setY(p.y + 0.2), 10, tv2.set(0, 1, 0), COL.dust, 0.6, 1.1); if (Math.random() < 0.4) SFX.squeal(p); }
   else if (k.faction === 'undead') { for (let i = 0; i < 30; i++) FX.spawn(tv.copy(p).add(tv2.set(rand(-.5, .5), rand(0, .3), rand(-.5, .5))), tv2.set(0, rand(1.5, 4), 0), rand(.5, 1), .25, .02, COL.wisp, COL.wispEnd, {}); puff(p, 6, tv2.set(0, 1, 0), COL.dust, 0.5, 1); if (Math.random() < 0.4) SFX.wail(p); }
   else { for (let i = 0; i < 40; i++) { tv.set(rand(-.3, .3), rand(0, 1), rand(-.3, .3)); FX.spawn(tv2.copy(p).add(tv).setY(p.y + rand(0, 3)), tv.set(0, rand(2, 6), 0), rand(.3, .8), .18, .02, COL.elec, COL.elecEnd, {}); } SFX.warp(p); }
@@ -95,9 +107,9 @@ function buildCreature(kind, k) {
   const mat = (c, o = {}) => new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.8, metalness: 0.05 }, o));
   const leather = mat(gob ? GOB.leather : UND.rag), cloth = mat(gob ? GOB.cloth : 0x2a2430), metal = mat(gob ? GOB.metal : UND.iron, { roughness: 0.4, metalness: 0.8 }), wood = mat(GOB.wood);
   const part = (geo, m, x, y, z, parent, name) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); if (name) { o.userData.part = name; hit.push(o); } return o; };
-  const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
-  const S = (r, a = 10, b = 8) => new THREE.SphereGeometry(r, a, b);
-  const Cy = (r1, r2, h, n = 8) => new THREE.CylinderGeometry(r1, r2, h, n);
+  const B = (w, h, d) => GEOM.box(w, h, d);
+  const S = (r, a = 10, b = 8) => GEOM.sphere(r, a, b);
+  const Cy = (r1, r2, h, n = 8) => GEOM.cyl(r1, r2, h, n);
   const skeletal = k.faction === 'undead' && !['u_ghoul', 'u_bloater'].includes(kind);
   const limbW = skeletal ? 0.07 : 0.13;
   const root = new THREE.Group(); root.scale.setScalar(k.scale || 1); g.add(root);
@@ -110,7 +122,7 @@ function buildCreature(kind, k) {
     torso = part(B(0.4, 0.5, 0.24), new THREE.MeshStandardMaterial({ color: 0x000000, transparent: true, opacity: 0 }), 0, 0.36, 0, hips, 'torso');
     torso.castShadow = false;
     part(Cy(0.04, 0.04, 0.55), body, 0, 0, -0.06, torso);
-    for (let i = 0; i < 4; i++) { const r = part(new THREE.TorusGeometry(0.17 - i * 0.012, 0.022, 5, 12, Math.PI * 1.4), body, 0, 0.16 - i * 0.1, 0.0, torso); r.rotation.set(Math.PI / 2, 0, -Math.PI * 0.2); }
+    for (let i = 0; i < 4; i++) { const r = part(GEOM.torus(0.17 - i * 0.012, 0.022, 5, 12, Math.PI * 1.4), body, 0, 0.16 - i * 0.1, 0.0, torso); r.rotation.set(Math.PI / 2, 0, -Math.PI * 0.2); }
     part(B(0.36, 0.08, 0.14), body, 0, -0.3, 0, torso);
   } else torso = part(B(gob ? 0.46 : 0.5, gob ? 0.52 : 0.58, 0.3), role === 'shield' || kind === 'u_knight' ? metal : (gob ? leather : body), 0, 0.36, 0, hips, 'torso');
   if (gob && role !== 'exploder') { part(B(0.48, 0.12, 0.32), cloth, 0, -0.22, 0, torso); part(B(0.5, 0.06, 0.33), leather, 0, -0.1, 0, torso); }
@@ -123,15 +135,15 @@ function buildCreature(kind, k) {
   for (const s of [-1, 1]) {
     if (skeletal) { part(S(0.045, 6, 5), new THREE.MeshBasicMaterial({ color: 0x050505 }), s * 0.06, eyeY, eyeZ - 0.01, head); }
     part(S(gob ? 0.035 : 0.025, 6, 5), glow, s * (gob ? 0.08 : 0.06), eyeY, eyeZ + 0.005, head);
-    if (gob) { const ear = part(new THREE.ConeGeometry(0.07, 0.3, 5), body, s * 0.24, 0.05, -0.02, head); ear.rotation.z = -s * 1.25; ear.rotation.x = -0.25; }
+    if (gob) { const ear = part(GEOM.cone(0.07, 0.3, 5), body, s * 0.24, 0.05, -0.02, head); ear.rotation.z = -s * 1.25; ear.rotation.x = -0.25; }
   }
-  if (gob) { const nose = part(new THREE.ConeGeometry(0.045, 0.16, 5), body, 0, -0.03, 0.2, head); nose.rotation.x = Math.PI / 2; part(B(0.2, 0.04, 0.02), mat(0x1a1a10), 0, -0.1, 0.165, head); }
+  if (gob) { const nose = part(GEOM.cone(0.045, 0.16, 5), body, 0, -0.03, 0.2, head); nose.rotation.x = Math.PI / 2; part(B(0.2, 0.04, 0.02), mat(0x1a1a10), 0, -0.1, 0.165, head); }
   // headgear
-  if (kind === 'g_archer' || kind === 'g_hunter') { const hood = part(new THREE.ConeGeometry(0.24, 0.32, 8), cloth, 0, 0.2, -0.03, head); hood.rotation.x = -0.25; }
-  if (kind === 'g_shield' || kind === 'g_sapper') part(new THREE.SphereGeometry(0.2, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), metal, 0, 0.1, 0, head);
+  if (kind === 'g_archer' || kind === 'g_hunter') { const hood = part(GEOM.cone(0.24, 0.32, 8), cloth, 0, 0.2, -0.03, head); hood.rotation.x = -0.25; }
+  if (kind === 'g_shield' || kind === 'g_sapper') part(GEOM.sphere(0.2, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2), metal, 0, 0.1, 0, head);
   if (kind === 'g_shaman' || kind === 'u_acolyte') { for (let i = 0; i < 3; i++) { const f = part(B(0.03, 0.22, 0.03), new THREE.MeshBasicMaterial({ color: [0x5dff9a, 0xffd040, 0xff5a40][i] }), (i - 1) * 0.08, 0.24, -0.05, head); f.rotation.z = (i - 1) * 0.4; } }
   if (kind === 'u_knight') { part(B(0.34, 0.32, 0.34), metal, 0, 0.02, 0, head); part(B(0.22, 0.03, 0.02), glow, 0, 0.03, 0.175, head); }
-  if (kind === 'u_deadeye' || kind === 'u_archer') { const hood = part(new THREE.ConeGeometry(0.22, 0.34, 8), mat(UND.rag), 0, 0.18, -0.03, head); hood.rotation.x = -0.3; }
+  if (kind === 'u_deadeye' || kind === 'u_archer') { const hood = part(GEOM.cone(0.22, 0.34, 8), mat(UND.rag), 0, 0.18, -0.03, head); hood.rotation.x = -0.3; }
   // legs and arms
   const legs = [], armsA = [];
   const shoulderX = role === 'exploder' ? 0.44 : (gob ? 0.3 : 0.32);
@@ -146,7 +158,7 @@ function buildCreature(kind, k) {
     part(B(limbW - 0.01, 0.32, limbW), body, 0, -0.48, 0.0, ap, 'limb');
     part(S(skeletal ? 0.05 : 0.07, 8, 6), body, 0, -0.66, 0.0, ap);
   }
-  if (kind === 'u_ghoul') armsA.forEach(a => { for (let i = -1; i <= 1; i++) { const c = part(new THREE.ConeGeometry(0.02, 0.18, 4), mat(0xd8d0b8), i * 0.035, -0.78, 0.03, a); c.rotation.x = Math.PI; } });
+  if (kind === 'u_ghoul') armsA.forEach(a => { for (let i = -1; i <= 1; i++) { const c = part(GEOM.cone(0.02, 0.18, 4), mat(0xd8d0b8), i * 0.035, -0.78, 0.03, a); c.rotation.x = Math.PI; } });
   let gunTip = null, tipMat = null; const extra = {};
   const rArm = armsA[1], lArm = armsA[0];
   if (role === 'runner') {
@@ -155,13 +167,13 @@ function buildCreature(kind, k) {
     const coreMat = new THREE.MeshBasicMaterial({ color: k.glow });
     if (gob) {
       const keg = part(Cy(0.2, 0.2, 0.36, 12), wood, 0, -0.05, 0.36, torso); keg.rotation.x = Math.PI / 2;
-      for (const z of [-0.12, 0.12]) { const band = part(new THREE.TorusGeometry(0.205, 0.015, 5, 16), metal, 0, -0.05, 0.36 + z, torso); band.rotation.x = 0; }
+      for (const z of [-0.12, 0.12]) { const band = part(GEOM.torus(0.205, 0.015, 5, 16), metal, 0, -0.05, 0.36 + z, torso); band.rotation.x = 0; }
       extra.core = part(S(0.07, 8, 6), coreMat, 0, 0.17, 0.4, torso, 'weak');
       part(Cy(0.012, 0.012, 0.12), mat(0x222222), 0, 0.12, 0.38, torso);
       lArm.rotation.x = -1.0; rArm.rotation.x = -1.0;
     } else {
       extra.core = part(S(0.18, 12, 10), coreMat, 0, -0.02, 0.36, torso, 'weak');
-      for (let i = 0; i < 5; i++) part(S(rand(0.05, 0.09), 6, 5), coreMat, rand(-0.3, 0.3), rand(-0.25, 0.25), rand(0.2, 0.33), torso);
+      for (let i = 0; i < 5; i++) part(S(0.05 + (i % 3) * 0.02, 6, 5), coreMat, rand(-0.3, 0.3), rand(-0.25, 0.25), rand(0.2, 0.33), torso);
     }
     extra.coreMat = coreMat;
   } else {
@@ -186,7 +198,7 @@ function buildCreature(kind, k) {
       gunTip = part(S(0.03, 6, 5), tipMat, 0, -0.4, 0.05, xb);
     } else if (role === 'tank') {
       const club = part(Cy(0.09, 0.05, 0.9, 8), gob ? wood : body, 0, -0.95, 0.15, rArm, 'limb'); club.rotation.x = 0.3;
-      if (gob) for (let i = 0; i < 4; i++) part(new THREE.ConeGeometry(0.03, 0.08, 4), metal, Math.cos(i * 1.6) * 0.09, -1.25 - i * 0.04, 0.2 + Math.sin(i * 1.6) * 0.09, rArm);
+      if (gob) for (let i = 0; i < 4; i++) part(GEOM.cone(0.03, 0.08, 4), metal, Math.cos(i * 1.6) * 0.09, -1.25 - i * 0.04, 0.2 + Math.sin(i * 1.6) * 0.09, rArm);
       gunTip = part(S(0.16, 8, 6), tipMat, 0, -0.7, 0.12, lArm);
       part(B(0.4, 0.3, 0.12), glow, 0, 0.05, -0.17, torso, 'weak');
       part(S(0.2, 8, 6), body, 0, 0.42, -0.08, torso);
@@ -228,30 +240,30 @@ function buildFlyer(kind, k) {
   const wings = [];
   let eye;
   if (kind === 'g_bat') {
-    add(new THREE.SphereGeometry(0.24, 12, 10), body, 0, 0, 0, 'torso');
-    eye = add(new THREE.SphereGeometry(0.15, 10, 8), body, 0, 0.06, 0.24, 'head');
+    add(GEOM.sphere(0.24, 12, 10), body, 0, 0, 0, 'torso');
+    eye = add(GEOM.sphere(0.15, 10, 8), body, 0, 0.06, 0.24, 'head');
     for (const s of [-1, 1]) {
-      add(new THREE.SphereGeometry(0.035, 6, 5), glow, s * 0.06, 0.1, 0.36);
-      const ear = add(new THREE.ConeGeometry(0.05, 0.16, 4), body, s * 0.08, 0.2, 0.22); ear.rotation.z = -s * 0.3;
+      add(GEOM.sphere(0.035, 6, 5), glow, s * 0.06, 0.1, 0.36);
+      const ear = add(GEOM.cone(0.05, 0.16, 4), body, s * 0.08, 0.2, 0.22); ear.rotation.z = -s * 0.3;
       const wg = new THREE.Group(); wg.position.set(s * 0.2, 0.04, 0); g.add(wg); wings.push(wg);
-      const mem = add(new THREE.BoxGeometry(0.7, 0.02, 0.42), new THREE.MeshStandardMaterial({ color: 0x5a2a20, roughness: 0.9, side: THREE.DoubleSide }), s * 0.36, 0, -0.04, 'limb', wg);
+      const mem = add(GEOM.box(0.7, 0.02, 0.42), new THREE.MeshStandardMaterial({ color: 0x5a2a20, roughness: 0.9, side: THREE.DoubleSide }), s * 0.36, 0, -0.04, 'limb', wg);
       void mem;
-      add(new THREE.BoxGeometry(0.72, 0.03, 0.03), body, s * 0.36, 0.01, 0.17, null, wg);
+      add(GEOM.box(0.72, 0.03, 0.03), body, s * 0.36, 0.01, 0.17, null, wg);
     }
-    add(new THREE.SphereGeometry(0.05, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff6a20 }), 0, -0.02, 0.37);
+    add(GEOM.sphere(0.05, 6, 5), new THREE.MeshBasicMaterial({ color: 0xff6a20 }), 0, -0.02, 0.37);
   } else {
     // wraith: a hooded, ragged robe with a skull and grasping hands
-    const robe = add(new THREE.ConeGeometry(0.34, 1.0, 10, 1, true), new THREE.MeshStandardMaterial({ color: k.color, roughness: 0.9, side: THREE.DoubleSide, emissive: 0x000000 }), 0, -0.25, 0, 'torso');
+    const robe = add(GEOM.cone(0.34, 1.0, 10, 1, true), new THREE.MeshStandardMaterial({ color: k.color, roughness: 0.9, side: THREE.DoubleSide, emissive: 0x000000 }), 0, -0.25, 0, 'torso');
     robe.material = body; body.side = THREE.DoubleSide;
-    add(new THREE.ConeGeometry(0.22, 0.34, 10), body, 0, 0.36, -0.02);
-    eye = add(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshStandardMaterial({ color: UND.bone, roughness: 0.6 }), 0, 0.28, 0.06, 'head');
+    add(GEOM.cone(0.22, 0.34, 10), body, 0, 0.36, -0.02);
+    eye = add(GEOM.sphere(0.13, 10, 8), new THREE.MeshStandardMaterial({ color: UND.bone, roughness: 0.6 }), 0, 0.28, 0.06, 'head');
     for (const s of [-1, 1]) {
-      add(new THREE.SphereGeometry(0.03, 6, 5), glow, s * 0.05, 0.3, 0.17);
+      add(GEOM.sphere(0.03, 6, 5), glow, s * 0.05, 0.3, 0.17);
       const wg = new THREE.Group(); wg.position.set(s * 0.2, 0.12, 0.05); g.add(wg); wings.push(wg);
-      add(new THREE.BoxGeometry(0.06, 0.4, 0.06), body, s * 0.05, -0.2, 0.08, 'limb', wg);
+      add(GEOM.box(0.06, 0.4, 0.06), body, s * 0.05, -0.2, 0.08, 'limb', wg);
     }
   }
-  const gunTip = add(new THREE.SphereGeometry(0.05, 8, 6), tipMat, 0, 0, 0.42);
+  const gunTip = add(GEOM.sphere(0.05, 8, 6), tipMat, 0, 0, 0.42);
   g.traverse(o => { if (o.isMesh) o.castShadow = o.userData.part === 'torso'; });
   return { g, hit, body, glow, gunTip, tipMat, rotors: [], eye, wings };
 }
@@ -289,7 +301,7 @@ class WarlordBase extends BossBase {
     return dist;
   }
   face(dt, rate = 6) { const t = Math.atan2(player.pos.x - this.pos.x, player.pos.z - this.pos.z); let d = t - this.yaw; d = Math.atan2(Math.sin(d), Math.cos(d)); this.yaw += d * Math.min(1, dt * rate); this.group.rotation.y = this.yaw; }
-  ring(p, r, t, color = 0xff3020) { const m = new THREE.Mesh(new THREE.RingGeometry(r * 0.9, r, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; m.position.copy(p).setY(p.y + 0.06); scene.add(m); this.rings.push({ m, t, max: t }); return m; }
+  ring(p, r, t, color = 0xff3020) { const m = new THREE.Mesh(GEOM.ring(r * 0.9, r, 40), new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; m.position.copy(p).setY(p.y + 0.06); scene.add(m); this.rings.push({ m, t, max: t }); return m; }
   updateRings(dt) { for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.t -= dt; r.m.material.opacity = 0.35 + 0.45 * Math.abs(Math.sin(time * 14)); if (r.t <= 0) { scene.remove(r.m); this.rings.splice(i, 1); } } }
   cleanup() { this.rings.forEach(r => scene.remove(r.m)); this.rings.length = 0; if (this.extraCleanup) this.extraCleanup(); }
 }
@@ -301,26 +313,26 @@ class ElderBoss extends WarlordBase {
     this.body = { pos: p.clone(), vel: new V3(), radius: 0.9, height: 3.2, onGround: true };
     this.pos = this.body.pos; this.centerY = 1.9; this.yaw = 0; this.rings = [];
     const G = this.group, skin = this.mat(0x4e7a32, { roughness: 0.75, metalness: 0.05 }), robe = this.mat(0x5a1e2a, { roughness: 0.9, metalness: 0 }), gold = this.mat(0xd4a93a, { roughness: 0.3, metalness: 0.9 }), steel = this.mat(0xc8d0d8, { roughness: 0.25, metalness: 0.95 }), hair = this.mat(0xd8d8d0, { roughness: 1, metalness: 0 });
-    const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+    const B = (w, h, d) => GEOM.box(w, h, d);
     const add = (geo, m, x, y, z, parent, part) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parent.add(o); if (part) this.mark(o, part); else o.castShadow = true; return o; };
     this.hips = new THREE.Group(); this.hips.position.y = 1.35; G.add(this.hips);
     this.legs = [];
     for (const s of [-1, 1]) { const l = new THREE.Group(); l.position.set(s * 0.28, 0, 0); this.hips.add(l); add(B(0.26, 0.7, 0.28), robe, 0, -0.35, 0, l, 'limb'); add(B(0.22, 0.65, 0.24), skin, 0, -0.95, 0.02, l, 'limb'); add(B(0.26, 0.1, 0.42), this.mat(0x3a2618), 0, -1.3, 0.08, l); this.legs.push(l); }
     this.torso = new THREE.Group(); this.torso.position.y = 0.1; this.hips.add(this.torso);
     add(B(0.95, 1.0, 0.55), robe, 0, 0.5, 0, this.torso, 'body');
-    add(new THREE.ConeGeometry(0.7, 1.1, 10, 1, true), robe, 0, -0.25, 0, this.torso);
+    add(GEOM.cone(0.7, 1.1, 10, 1, true), robe, 0, -0.25, 0, this.torso);
     // glowing war-amulet: the weak point
-    this.amulet = add(new THREE.OctahedronGeometry(0.16), new THREE.MeshBasicMaterial({ color: 0x5dff9a }), 0, 0.72, 0.31, this.torso, 'weak');
-    add(new THREE.TorusGeometry(0.22, 0.025, 6, 16, Math.PI), gold, 0, 0.92, 0.28, this.torso).rotation.z = Math.PI;
-    for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.28, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold, s * 0.55, 1.0, 0, this.torso, 'body');
+    this.amulet = add(GEOM.octa(0.16), new THREE.MeshBasicMaterial({ color: 0x5dff9a }), 0, 0.72, 0.31, this.torso, 'weak');
+    add(GEOM.torus(0.22, 0.025, 6, 16, Math.PI), gold, 0, 0.92, 0.28, this.torso).rotation.z = Math.PI;
+    for (const s of [-1, 1]) add(GEOM.sphere(0.28, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold, s * 0.55, 1.0, 0, this.torso, 'body');
     this.head = add(B(0.56, 0.5, 0.52), skin, 0, 1.3, 0.08, this.torso, 'head');
     for (const s of [-1, 1]) {
-      add(new THREE.SphereGeometry(0.05, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffd040 }), s * 0.13, 0.05, 0.27, this.head);
-      const ear = add(new THREE.ConeGeometry(0.1, 0.5, 5), skin, s * 0.42, 0.06, -0.02, this.head); ear.rotation.z = -s * 1.3;
+      add(GEOM.sphere(0.05, 6, 5), new THREE.MeshBasicMaterial({ color: 0xffd040 }), s * 0.13, 0.05, 0.27, this.head);
+      const ear = add(GEOM.cone(0.1, 0.5, 5), skin, s * 0.42, 0.06, -0.02, this.head); ear.rotation.z = -s * 1.3;
     }
-    add(new THREE.ConeGeometry(0.07, 0.26, 5), skin, 0, -0.02, 0.33, this.head).rotation.x = Math.PI / 2;
-    const beard = add(new THREE.ConeGeometry(0.24, 0.75, 8), hair, 0, -0.5, 0.2, this.head); beard.rotation.x = Math.PI;
-    for (let i = 0; i < 5; i++) { const sp = add(new THREE.ConeGeometry(0.05, 0.4, 4), gold, (i - 2) * 0.12, 0.38, -0.05, this.head); sp.rotation.z = (i - 2) * 0.2; }
+    add(GEOM.cone(0.07, 0.26, 5), skin, 0, -0.02, 0.33, this.head).rotation.x = Math.PI / 2;
+    const beard = add(GEOM.cone(0.24, 0.75, 8), hair, 0, -0.5, 0.2, this.head); beard.rotation.x = Math.PI;
+    for (let i = 0; i < 5; i++) { const sp = add(GEOM.cone(0.05, 0.4, 4), gold, (i - 2) * 0.12, 0.38, -0.05, this.head); sp.rotation.z = (i - 2) * 0.2; }
     // two curved blades
     this.arms = []; this.blades = [];
     this.bladeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -435,25 +447,25 @@ class LichBoss extends WarlordBase {
   constructor(p, cycle) {
     super(BOSSES.find(b => b.id === 'lich'), cycle);
     this.faction = 'undead'; this.mapColor = '#c070ff';
-    this.body = { pos: p.clone(), vel: new V3(), radius: 0.8, height: 3.2, onGround: true, gravity: 0 };
+    this.body = { pos: p.clone(), vel: new V3(), radius: 0.8, height: 3.2, onGround: true };
     this.pos = this.body.pos; this.centerY = 2.2; this.yaw = 0; this.rings = []; this.hover = 0.6;
     const G = this.group, robe = this.mat(0x241c2c, { roughness: 0.95, metalness: 0 }), bone = this.mat(UND.bone, { roughness: 0.6, metalness: 0 }), gold = this.mat(0xb08a30, { roughness: 0.35, metalness: 0.9 });
-    const B = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+    const B = (w, h, d) => GEOM.box(w, h, d);
     const add = (geo, m, x, y, z, parent, part) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parent.add(o); if (part) this.mark(o, part); else o.castShadow = true; return o; };
     this.root = new THREE.Group(); G.add(this.root);
-    const r1 = add(new THREE.ConeGeometry(0.9, 2.2, 12, 1, true), robe, 0, 1.2, 0, this.root, 'body'); r1.material.side = THREE.DoubleSide;
+    const r1 = add(GEOM.cone(0.9, 2.2, 12, 1, true), robe, 0, 1.2, 0, this.root, 'body'); r1.material.side = THREE.DoubleSide;
     add(B(0.9, 0.9, 0.5), robe, 0, 2.3, 0, this.root, 'body');
-    for (const s of [-1, 1]) add(new THREE.SphereGeometry(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold, s * 0.52, 2.72, 0, this.root, 'body');
-    this.gem = add(new THREE.OctahedronGeometry(0.2), new THREE.MeshBasicMaterial({ color: 0xc070ff }), 0, 2.45, 0.28, this.root, 'weak');
-    this.head = add(new THREE.SphereGeometry(0.28, 14, 12), bone, 0, 3.05, 0.05, this.root, 'head'); this.head.scale.set(1, 1.15, 1.05);
-    for (const s of [-1, 1]) { add(new THREE.SphereGeometry(0.075, 6, 5), new THREE.MeshBasicMaterial({ color: 0x050505 }), s * 0.1, 0.03, 0.22, this.head); add(new THREE.SphereGeometry(0.04, 6, 5), new THREE.MeshBasicMaterial({ color: 0xc070ff }), s * 0.1, 0.03, 0.26, this.head); }
-    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const sp = add(new THREE.ConeGeometry(0.05, 0.3, 4), gold, Math.cos(a) * 0.24, 0.28, Math.sin(a) * 0.24, this.head); sp.rotation.z = 0; }
-    add(new THREE.ConeGeometry(0.42, 0.6, 10, 1, true), robe, 0, 3.15, -0.05, this.root).material.side = THREE.DoubleSide;
+    for (const s of [-1, 1]) add(GEOM.sphere(0.26, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), gold, s * 0.52, 2.72, 0, this.root, 'body');
+    this.gem = add(GEOM.octa(0.2), new THREE.MeshBasicMaterial({ color: 0xc070ff }), 0, 2.45, 0.28, this.root, 'weak');
+    this.head = add(GEOM.sphere(0.28, 14, 12), bone, 0, 3.05, 0.05, this.root, 'head'); this.head.scale.set(1, 1.15, 1.05);
+    for (const s of [-1, 1]) { add(GEOM.sphere(0.075, 6, 5), new THREE.MeshBasicMaterial({ color: 0x050505 }), s * 0.1, 0.03, 0.22, this.head); add(GEOM.sphere(0.04, 6, 5), new THREE.MeshBasicMaterial({ color: 0xc070ff }), s * 0.1, 0.03, 0.26, this.head); }
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; const sp = add(GEOM.cone(0.05, 0.3, 4), gold, Math.cos(a) * 0.24, 0.28, Math.sin(a) * 0.24, this.head); sp.rotation.z = 0; }
+    add(GEOM.cone(0.42, 0.6, 10, 1, true), robe, 0, 3.15, -0.05, this.root).material.side = THREE.DoubleSide;
     this.arms = [];
     for (const s of [-1, 1]) { const a = new THREE.Group(); a.position.set(s * 0.6, 2.6, 0); this.root.add(a); this.arms.push(a); add(B(0.12, 0.8, 0.12), bone, 0, -0.4, 0, a, 'limb'); add(B(0.3, 0.5, 0.3), robe, 0, -0.15, 0, a); }
-    const staff = add(new THREE.CylinderGeometry(0.04, 0.05, 2.6, 6), this.mat(0x2a2030, { roughness: 0.8, metalness: 0.1 }), 0, -0.6, 0.15, this.arms[1]);
+    const staff = add(GEOM.cyl(0.04, 0.05, 2.6, 6), this.mat(0x2a2030, { roughness: 0.8, metalness: 0.1 }), 0, -0.6, 0.15, this.arms[1]);
     void staff;
-    this.orb = add(new THREE.SphereGeometry(0.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x9aff6a }), 0, 0.75, 0.15, this.arms[1]);
+    this.orb = add(GEOM.sphere(0.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x9aff6a }), 0, 0.75, 0.15, this.arms[1]);
     this.group.traverse(o => { if (o.isMesh) o.castShadow = true; });
     this.group.position.copy(this.pos);
     this.volleyT = 2.5; this.summonT = 1.5; this.blinkT = 6; this.novaT = 7; this.minionKinds = ['u_archer', 'u_ghoul', 'u_ghoul'];
@@ -523,6 +535,6 @@ const BOSS_CLASSES = { titan: TitanBoss, hive: HiveBoss, bulwark: BulwarkBoss, e
 // which boss guards a boss wave: each faction cycles through its own bosses
 function bossDefForWave(w) {
   const f = factionForWave(w), era = Math.floor((w - 1) / 10), slot = w % 10 === 0 ? 1 : 0;
-  const n = Math.floor(era / FACTIONS.length) * 2 + slot;
+  const n = Math.floor(era / ERA_FACTIONS.length) * 2 + slot;
   return BOSSES.find(b => b.id === f.bosses[n % f.bosses.length]);
 }

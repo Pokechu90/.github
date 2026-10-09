@@ -12,9 +12,10 @@ const ui = (() => {
     streak: E('streak'), prompt: E('prompt'), vignette: E('vignette'), hurt: E('hurt'), stunFx: E('stunFx'), puFx: E('puFx'), scope: E('scope'), flash: E('flash'), feed: E('killfeed'), map: E('minimap'), lockHint: E('lockHint'),
     toasts: E('toasts'), powerups: E('powerups'), inter: E('interBar'), streakNum: E('streakNum'), streakReady: E('streakReady'), streakFill: E('streakFill'),
     rmTotal: E('rmTotal'), rmParts: E('rmParts'), comboNum: E('comboNum'), comboFill: E('comboFill'),
+    candyNum: E('candyNum'), candyVal: E('candyVal'), fever: E('fever'), feverN: E('feverN'), feverFill: E('feverFill'), feverDmg: E('feverDmg'),
     bossBar: E('bossBar'), bossName: E('bossName'), bossPhase: E('bossPhase'), bossFill: E('bossFill'), bossGhost: E('bossGhost'), bossShield: E('bossShield'),
   };
-  const screens = { menu: E('menu'), play: E('play'), armory: E('armory'), quests: E('quests'), settings: E('settings'), pause: E('pause'), buffs: E('buffs'), over: E('over') };
+  const screens = { menu: E('menu'), play: E('play'), armory: E('armory'), quests: E('quests'), settings: E('settings'), pause: E('pause'), buffs: E('buffs'), over: E('over'), studio: E('studio') };
   const cache = {};
   const setT = (el, key, v) => { if (cache[key] !== v) { cache[key] = v; el.textContent = v; } };
   const setH = (el, key, v) => { if (cache[key] !== v) { cache[key] = v; el.innerHTML = v; } };
@@ -94,6 +95,10 @@ const ui = (() => {
     if (waves.active) { setT(h.hostLbl, 'hl', 'Hostiles'); setT(h.host, 'hn', String(enemies.length + waves.queue.length)); }
     else { setT(h.hostLbl, 'hl', 'Next wave'); setT(h.host, 'hn', Math.ceil(Math.max(0, waves.inter)) + 's'); }
     setT(h.kills, 'k', String(run.kills)); setT(h.score, 's', fmt(run.score)); setT(h.coin, 'c', fmt(profile.coins));
+    h.candyNum.hidden = !halloweenActive(); setT(h.candyVal, 'cc', fmt(profile.candy || 0));
+    const fev = feverActive() && (run.fever > 0 || W.id === 'reaper');
+    h.fever.hidden = !fev;
+    if (fev) { setT(h.feverN, 'fn', `${run.fever || 0}/${FEVER_MAX}`); h.feverFill.style.width = `${clamp((run.feverT || 0) / FEVER_WINDOW, 0, 1) * 100}%`; setT(h.feverDmg, 'fd', `+${Math.round((run.fever || 0) * FEVER_PER * 100)}% dmg`); }
     setT(h.mult, 'm', run.multiT > 0 && run.multi > 1 ? `Multi-kill · ${run.multi} in a row` : '');
     coinPopT -= dt; if (coinPopT <= 0 && coinPopN) { coinPopN = 0; h.coinPop.style.opacity = 0; }
     // round multiplier: wave × modifier × combo
@@ -166,13 +171,21 @@ const ui = (() => {
         <div>Kills<b>${fmt(profile.stats.kills)}</b></div>
         <div>Headshots<b>${fmt(profile.stats.headshots)}</b></div>
         <div>Bosses<b>${fmt(profile.stats.bosses)}</b></div>
+        ${halloweenActive() ? `<div>Candy corn<b style="color:#ffb238"><span class="candy"></span>${fmt(profile.candy || 0)}</b></div>` : ''}
       </div>
       <div class="pc-load">Loadout <b>${escapeHtml(pw.name)}</b> + <b>${escapeHtml(sw.name)}</b> · ${escapeHtml(DIFFICULTY[profile.difficulty].label)} · ${escapeHtml(MAP_BY_ID[profile.map].name)}</div>`;
     E('questCount').textContent = `${questsDoneCount()} / ${QUESTS.length} done`;
+    const ev = halloweenActive();
+    E('eventBanner').hidden = !ev;
+    document.querySelector('#menu .eyebrow').textContent = ev ? 'Halloween event · Night of Terror is live' : 'Sector 9 · rogue machine uprising';
+    E('studioSub').textContent = ev ? `${H_SKIN_COUNT} event skins` : '360° preview';
+    document.querySelector('#menu .brand p').textContent = ev
+      ? 'The dead have crawled out of the foundry yards. Skeleton archers, zombie hordes and witches march under a blood moon, and Dracula rises every fifth wave.'
+      : 'The security bots have turned on the crew. Hold five sites against endless waves, bring down a war machine every fifth wave, and build an arsenal that keeps up.';
   }
 
-  function renderBoard(el, map, diff, highlight) {
-    const list = profile.board[boardKey(map, diff)] || [];
+  function renderBoard(el, map, diff, highlight, mode) {
+    const list = profile.board[boardKey(map, diff, mode)] || [];
     el.innerHTML = list.length ? list.map((r, i) => `<div class="br${i === highlight ? ' me' : ''}"><span>${i + 1}</span><b>${fmt(r.score)}</b><span>wave ${r.wave}</span><span>${fmt(r.kills)} kills</span></div>`).join('') : '<div class="empty">No runs yet on this map and difficulty.</div>';
   }
   // ---------------- play setup ----------------
@@ -180,11 +193,16 @@ const ui = (() => {
     if (!mapUnlocked(MAP_BY_ID[profile.map])) profile.map = 'yard';
     E('mapCards').innerHTML = MAPS.map(m => { const ok = mapUnlocked(m); return `<button class="card${m.id === profile.map ? ' on' : ''}${ok ? '' : ' locked'}" data-map="${m.id}" ${ok ? '' : 'aria-disabled="true"'}><div class="sw" style="background:${m.swatch}"></div><div class="ct"><b>${escapeHtml(m.name)}</b><span>${escapeHtml(ok ? m.desc : mapUnlockText(m))}</span></div></button>`; }).join('');
     E('diffCards').innerHTML = Object.entries(DIFFICULTY).map(([k, d]) => `<button class="card${k === profile.difficulty ? ' on' : ''}" data-diff="${k}"><div class="ct"><b>${d.label}</b><span>${escapeHtml(d.desc)}</span></div></button>`).join('');
-    E('deploySub').textContent = `${MAP_BY_ID[profile.map].name} · ${DIFFICULTY[profile.difficulty].label}`;
-    renderBoard(E('playBoard'), profile.map, profile.difficulty, -1);
+    // game mode: Night of Terror is only offered while the Halloween event runs
+    const ev = halloweenActive(); if (!ev) profile.mode = 'standard';
+    E('modeWrap').hidden = !ev;
+    if (ev) E('modeCards').innerHTML = [['standard', 'Standard', 'Robots, then goblins, then the undead, changing every 10 waves.'], ['halloween', 'Night of Terror', 'Halloween monsters under a blood moon. Dracula every fifth wave. Earns candy corn.']].map(([k, n, d]) => `<button class="card${k === 'halloween' ? ' night' : ''}${profile.mode === k ? ' on' : ''}" data-mode="${k}"><div class="ct"><b>${n}${k === 'halloween' ? '<small>EVENT</small>' : ''}</b><span>${d}</span></div></button>`).join('');
+    E('deploySub').textContent = `${MAP_BY_ID[profile.map].name} · ${DIFFICULTY[profile.difficulty].label}${profile.mode === 'halloween' ? ' · Night of Terror' : ''}`;
+    renderBoard(E('playBoard'), profile.map, profile.difficulty, -1, profile.mode);
     show('play');
   }
   E('mapCards').addEventListener('click', e => { const c = e.target.closest('[data-map]'); if (!c) return; const m = MAP_BY_ID[c.dataset.map]; if (!mapUnlocked(m)) { SFX.deny(); return; } SFX.ui(); profile.map = m.id; saveProfile(); openPlay(); });
+  E('modeCards').addEventListener('click', e => { const c = e.target.closest('[data-mode]'); if (!c) return; SFX.ui(); profile.mode = c.dataset.mode; saveProfile(); openPlay(); });
   E('diffCards').addEventListener('click', e => { const c = e.target.closest('[data-diff]'); if (!c) return; SFX.ui(); profile.difficulty = c.dataset.diff; saveProfile(); openPlay(); });
 
   // ---------------- armory (loadout + shop) ----------------
@@ -238,7 +256,8 @@ const ui = (() => {
     } else {
       const list = WEAPONS.map(w => {
         const owned = weaponOwned(w.id), eq = profile.loadout.primary === w.id ? 'Primary' : profile.loadout.secondary === w.id ? 'Secondary' : '';
-        return `<button class="witem${arm.sel === w.id ? ' on' : ''}" data-sel="${w.id}"><b>${escapeHtml(w.name)}</b><small>${escapeHtml(w.cls)}</small><span class="tag ${eq ? 'eq' : owned ? '' : 'lk'}">${eq || (owned ? 'Owned' : `Lv ${w.level}`)}</span></button>`;
+        if (w.event && !owned && !halloweenActive()) return '';
+        return `<button class="witem${arm.sel === w.id ? ' on' : ''}" data-sel="${w.id}"><b>${escapeHtml(w.name)}</b><small>${escapeHtml(w.cls)}</small><span class="tag ${eq ? 'eq' : owned ? '' : 'lk'}">${eq || (owned ? 'Owned' : w.event ? 'Event' : `Lv ${w.level}`)}</span></button>`;
       }).join('');
       body.innerHTML = `<div class="armory"><div class="wlist">${list}</div><div class="wdetail">${arm.tab === 'weapons' ? weaponDetail(arm.sel) : upgradeDetail(arm.sel)}</div></div>`;
     }
@@ -249,20 +268,25 @@ const ui = (() => {
   }
   function weaponDetail(id) {
     const w = WEAPON_BY_ID[id], owned = weaponOwned(id);
-    let head = `<div><h3>${escapeHtml(w.name)}</h3><div class="cls">${escapeHtml(w.cls)} · ${w.mode}${w.id === 'sniper' ? ' · 3× headshots' : ''}</div></div>${statBars(id)}`;
+    let head = `<div><h3>${escapeHtml(w.name)}</h3><div class="cls">${escapeHtml(w.cls)} · ${w.mode}${w.head === 3 ? ' · 3× headshots' : ''}</div></div>${statBars(id)}`;
+    if (w.perks) head += `<div class="perks"><b>Installed perks</b>${w.perks.map(p => `<span>• ${escapeHtml(p)}</span>`).join('')}</div>`;
+    if (!owned && w.event) {
+      const prog = id === 'reaper' ? ` Contract progress: ${Math.round(contractProgress() * 100)}%.` : id === 'fang' ? ` Dracula kills so far: ${profile.fangPity || 0} (guaranteed by the 3rd).` : '';
+      return head + `<div class="row"><div><b>Halloween event weapon</b><p>${escapeHtml(w.how + '.' + prog)}</p></div></div>`;
+    }
     if (!owned) {
       const canBuy = profile.coins >= w.price;
       return head + `<div class="row"><div><b>Locked</b><p>Unlocks free at level ${w.level}, or buy it now.</p></div><div class="ctl"><span class="price"><span class="coin"></span>${fmt(w.price)}</span><button class="btn sm${canBuy ? ' primary' : ''}" data-buy-weapon="${id}">Buy</button></div></div>`;
     }
     const slots = `<div class="slotbtns"><button class="chip${profile.loadout.primary === id ? ' on' : ''}" data-slot="primary" data-w="${id}">Primary · slot 1</button><button class="chip${profile.loadout.secondary === id ? ' on' : ''}" data-slot="secondary" data-w="${id}">Secondary · slot 2</button></div>`;
-    const atts = ATT_IDS.map(a => {
+    const atts = ATT_IDS.filter(a => !(a === 'reddot' && (w.builtinSight || w.special === 'fever'))).map(a => {
       const A = ATTACHMENTS[a], has = attOwned(id, a), on = attOn(id, a);
       const q = QUESTS.find(q => (q.reward.att && q.reward.att[0] === id && q.reward.att[1] === a) || (q.reward.atts || []).some(x => x[0] === id && x[1] === a));
       const how = !has && q ? ` Or earn it: quest “${q.name}”.` : '';
       return `<div class="row"><div><b>${escapeHtml(A.name)}</b><p>${escapeHtml(A.desc + how)}</p></div><div class="ctl">${has ? `<button class="chip${on ? ' on' : ''}" data-toggle="${a}" data-w="${id}">${on ? 'Fitted' : 'Off'}</button>` : `<span class="price"><span class="coin"></span>${fmt(A.price)}</span><button class="btn sm${profile.coins >= A.price ? ' primary' : ''}" data-buy-att="${a}" data-w="${id}">Buy</button>`}</div></div>`;
     }).join('');
-    const skins = `<div class="skins">${Object.entries(SKINS).map(([k, s]) => { const has = !!profile.skins[k]; return `<button class="skin${weaponSkin(id) === k ? ' on' : ''}" data-skin="${k}" data-w="${id}" ${has ? '' : 'disabled'} title="${escapeHtml(has ? s.name : s.how)}"><i style="background:linear-gradient(135deg,#${s.poly.toString(16).padStart(6, '0')} 0 45%,#${s.metal.toString(16).padStart(6, '0')} 45% 80%,#${s.accent.toString(16).padStart(6, '0')} 80%)"></i>${escapeHtml(has ? s.name : 'Locked')}</button>`; }).join('')}</div>`;
-    return head + slots + `<div class="lbl">Attachments</div><div class="rows">${atts}</div><div class="lbl">Skin</div>${skins}`;
+    const skins = `<div class="skins">${Object.entries(SKINS).filter(([k]) => skinFits(k, id) && (!SKINS[k].event || halloweenActive() || skinOwned(k))).map(([k, s]) => { const has = skinOwned(k); return `<button class="skin${weaponSkin(id) === k ? ' on' : ''}" data-skin="${k}" data-w="${id}" ${has ? '' : 'disabled'} title="${escapeHtml(has ? s.name : s.how)}"><i style="background:linear-gradient(135deg,#${s.poly.toString(16).padStart(6, '0')} 0 45%,#${s.metal.toString(16).padStart(6, '0')} 45% 80%,#${s.accent.toString(16).padStart(6, '0')} 80%)"></i>${escapeHtml(has ? s.name : 'Locked')}</button>`; }).join('')}</div>`;
+    return head + slots + `<div class="lbl">Attachments</div><div class="rows">${atts}</div><div class="lbl">Skin <button class="chip" data-studio="${id}">Open Skin Studio</button></div>${skins}`;
   }
   function upgradeDetail(id) {
     const w = WEAPON_BY_ID[id];
@@ -281,12 +305,13 @@ const ui = (() => {
     if (d.tab) { arm.tab = d.tab; SFX.ui(); return renderArmory(); }
     if (d.sel) { arm.sel = d.sel; SFX.ui(); return renderArmory(); }
     if (d.buySupply) return buySupply(d.buySupply);
-    if (d.buyWeapon) { const w = WEAPON_BY_ID[d.buyWeapon]; if (weaponOwned(w.id)) return; if (!spendCoins(w.price)) { SFX.deny(); toast('Not enough coins', `${fmt(w.price - profile.coins)} more needed`); return; } profile.weapons[w.id] = true; saveProfile(); SFX.buy(); toast('Weapon unlocked', w.name, 'drop'); return renderArmory(); }
+    if (d.studio) { SFX.ui(); studio.open(arm.mode === 'intermission' ? 'armory' : 'armory', d.studio); return; }
+    if (d.buyWeapon) { const w = WEAPON_BY_ID[d.buyWeapon]; if (weaponOwned(w.id) || w.event) return; if (!spendCoins(w.price)) { SFX.deny(); toast('Not enough coins', `${fmt(w.price - profile.coins)} more needed`); return; } profile.weapons[w.id] = true; saveProfile(); SFX.buy(); toast('Weapon unlocked', w.name, 'drop'); return renderArmory(); }
     if (d.buyAtt) { const A = ATTACHMENTS[d.buyAtt]; if (!spendCoins(A.price)) { SFX.deny(); toast('Not enough coins', `${fmt(A.price - profile.coins)} more needed`); return; } grantAtt(d.w, d.buyAtt); SFX.buy(); loadoutChanged(); return renderArmory(); }
     if (d.toggle) { setAtt(d.w, d.toggle, !attOn(d.w, d.toggle)); SFX.ui(); loadoutChanged(); return renderArmory(); }
     if (d.up) { const cost = upgradeCost(d.w, d.up); if (upgradeLevel(d.w, d.up) >= UP_MAX) return; if (!spendCoins(cost)) { SFX.deny(); toast('Not enough coins', `${fmt(cost - profile.coins)} more needed`); return; } (profile.upgrades[d.w] || (profile.upgrades[d.w] = {}))[d.up] = upgradeLevel(d.w, d.up) + 1; saveProfile(); SFX.buy(); loadoutChanged(); return renderArmory(); }
     if (d.slot) { const other = d.slot === 'primary' ? 'secondary' : 'primary'; if (profile.loadout[other] === d.w) profile.loadout[other] = profile.loadout[d.slot]; profile.loadout[d.slot] = d.w; saveProfile(); SFX.ui(); loadoutChanged(); return renderArmory(); }
-    if (d.skin) { profile.skin[d.w] = d.skin; saveProfile(); refreshViewmodel(d.w); SFX.ui(); return renderArmory(); }
+    if (d.skin) { if (!skinOwned(d.skin) || !skinFits(d.skin, d.w)) return; profile.skin[d.w] = d.skin; saveProfile(); refreshViewmodel(d.w); SFX.ui(); return renderArmory(); }
     if (d.act === 'ready') { SFX.ui(); closeArmory(); nextWaveNow(); return; }
     if (d.act === 'close') { SFX.ui(); closeArmory(); }
   });
@@ -298,6 +323,12 @@ const ui = (() => {
     questBack = back;
     const dq = ensureDaily();
     E('dailyList').innerHTML = dq.map(d => { const t = dailyDef(d); if (!t) return ''; return `<div class="quest${d.done ? ' done' : ''}"><div class="qh"><b>${escapeHtml(t.name)}</b><span class="rw">${t.reward} coins · 200 XP</span></div><p>${escapeHtml(t.desc(d.goal))}</p><div class="qbar"><i style="width:${(Math.min(d.p, d.goal) / d.goal * 100).toFixed(1)}%"></i></div><span class="qp">${d.done ? 'Complete' : `${fmt(d.p)} / ${fmt(d.goal)}`}</span></div>`; }).join('');
+    const ev = halloweenActive(); E('hwQuests').hidden = !ev;
+    if (ev) {
+      const c = contract();
+      E('contractBox').innerHTML = `<div class="ch"><b>${c.done ? "Reaper's Eye unlocked" : "Reward: Reaper's Eye (sniper with Fever)"}</b><span class="note">${Math.round(contractProgress() * 100)}% complete</span></div><div class="steps">${REAPER_STEPS.map(st => { const p = Math.min(c[st.id], st.goal); return `<div class="step${p >= st.goal ? ' done' : ''}"><b>${p >= st.goal ? '✓ ' : ''}${escapeHtml(st.name)}</b><span class="note">${escapeHtml(st.desc)}</span><div class="qbar"><i style="width:${(p / st.goal * 100).toFixed(1)}%"></i></div><span class="qp">${fmt(p)} / ${fmt(st.goal)}</span></div>`; }).join('')}</div>`;
+      E('hwList').innerHTML = H_QUESTS.map(q => { const s = hqState(q.id), p = Math.min(s.p, q.goal); return `<div class="quest${s.done ? ' done' : ''}"><div class="qh"><b>${escapeHtml(q.name)}</b><span class="rw"><span class="candy"></span>${q.candy} candy corn</span></div><p>${escapeHtml(q.desc)}</p><div class="qbar"><i style="width:${(p / q.goal * 100).toFixed(1)}%"></i></div><span class="qp">${s.done ? 'Complete' : `${fmt(p)} / ${fmt(q.goal)}`}</span></div>`; }).join('');
+    }
     E('questList').innerHTML = QUESTS.map(q => { const s = questState(q.id); const p = Math.min(s.p, q.goal); return `<div class="quest${s.done ? ' done' : ''}"><div class="qh"><b>${escapeHtml(q.name)}</b><span class="rw">${escapeHtml(rewardText(q.reward))}</span></div><p>${escapeHtml(q.desc)}</p><div class="qbar"><i style="width:${(p / q.goal * 100).toFixed(1)}%"></i></div><span class="qp">${s.done ? 'Complete' : `${fmt(p)} / ${fmt(q.goal)}`}</span></div>`; }).join('');
     show('quests');
   }
@@ -354,13 +385,14 @@ const ui = (() => {
     if (s.drops.length) lines.push(`Rare drops: <b>${s.drops.map(escapeHtml).join(', ')}</b>`);
     const newMaps = MAPS.filter(m => m.unlock && mapUnlocked(m) && !s.mapsBefore.includes(m.id)).map(m => m.name);
     if (newMaps.length) lines.push(`New map unlocked: <b>${newMaps.map(escapeHtml).join(', ')}</b>`);
+    if (s.candy) lines.push(`Candy corn: <b>+${fmt(s.candy)}</b>`);
     if (s.bestCombo > 1) lines.unshift(`Best combo: <b>${s.bestCombo} kills</b>`);
     if (s.rank >= 0) lines.unshift(`Leaderboard: <b>#${s.rank + 1}</b> on ${escapeHtml(s.map)} (${escapeHtml(s.diff)})`);
     E('overList').innerHTML = lines.join('<br>');
-    E('oBoardLbl').textContent = `${s.map} · ${s.diff}`; renderBoard(E('overBoard'), s.mapId, s.diffId, s.rank);
+    E('oBoardLbl').textContent = `${s.map} · ${s.diff}${s.mode === 'halloween' ? ' · Night of Terror' : ''}`; renderBoard(E('overBoard'), s.mapId, s.diffId, s.rank, s.mode);
     show('over');
   }
 
-  return { h, show, hideAll, banner, toast, prompt, streak, hitmarker, dmgIndicator, killfeed, update, renderProfile, openPlay, openArmory, renderArmory, openQuests, openSettings, openBuffs, buffKey, showOver,
+  return { h, screens, show, hideAll, banner, toast, prompt, streak, hitmarker, dmgIndicator, killfeed, update, renderProfile, openPlay, openArmory, renderArmory, openQuests, openSettings, openBuffs, buffKey, showOver,
     flash(a) { flashA = Math.max(flashA, a); }, hurt() { hurtA = 1; }, get armoryOpen() { return !screens.armory.hidden; } };
 })();

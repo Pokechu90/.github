@@ -494,6 +494,7 @@ function waveCleared() {
   if (flawless) { const fb = addCoins(50 + 10 * w, null); profile.stats.flawless++; questEvent('flawless'); ui.toast('Flawless wave', `+${fb} coins for taking no damage`, 'drop'); }
   profile.stats.bestWave = Math.max(profile.stats.bestWave, w);
   questEvent('wave', w);
+  if (nightMode()) questEvent('nightWave', w);
   run.score += 250 * w;
   player.armor = Math.min(100, player.armor + 15);
   SFX.clear(); Music.play('calm');
@@ -531,7 +532,7 @@ function interact() {
   const st = nearStation(); if (!st || rolling || G.switchT > 0) return;
   if (st.type === 'crate') {
     if (!spendCoins(CRATE_COST)) { SFX.deny(); ui.prompt(`Need ${fmt(CRATE_COST - profile.coins)} more coins`, true, 1.4); return; }
-    const pool = WEAPONS.filter(w => !loadout.includes(w.id)).flatMap(w => w.id === 'plasma' ? [w.id] : [w.id, w.id]);
+    const pool = WEAPONS.filter(w => !w.event && !loadout.includes(w.id)).flatMap(w => w.id === 'plasma' ? [w.id] : [w.id, w.id]);
     rolling = { st, t: 0, dur: 2.4, result: pick(pool), tick: 0 }; run.boxRolls++; questEvent('box');
     SFX.charge(st.pos, true);
   } else {
@@ -583,8 +584,9 @@ function resetWorld() {
 function startRun() {
   SFX.init();
   if (!mapUnlocked(MAP_BY_ID[profile.map])) profile.map = 'yard';
-  if (!world.map || world.map.id !== profile.map) loadMap(profile.map);
+  if (!world.map || world.map.id !== profile.map || world.mode !== wantedMode()) loadMap(profile.map);
   resetWorld(); resetRun();
+  Object.assign(run, { mode: world.mode, candy: 0, fever: 0, feverT: 0 });
   mapsAtStart.length = 0; MAPS.forEach(m => { if (mapUnlocked(m)) mapsAtStart.push(m.id); });
   Object.assign(player, { hp: 100, armor: 50, alive: true, frags: 3, stuns: 2, yaw: 0, pitch: 0, crouch: 0, lastHurt: -99, stunT: 0, slideT: 0, slideCd: 0 });
   player.pos.copy(world.playerSpawn); player.vel.set(0, 0, 0);
@@ -613,7 +615,8 @@ function gameOver(quit) {
   const summary = { quit, wave: run.wave, score: run.score, kills: run.kills, heads: run.heads, acc: run.shots ? Math.round(run.hits / run.shots * 100) : 0, coins: run.coins, xp: run.xp, time: run.time, levels: run.levelsGained, quests: run.questsDone.slice(), drops: run.drops.slice(), map: world.map.name, diff: d.label, mapsBefore: mapsAtStart.slice() };
   summary.newBest = run.wave > 0 && run.wave >= profile.stats.bestWave && !quit;
   summary.bestCombo = run.bestCombo; summary.mapId = world.map.id; summary.diffId = run.diff;
-  summary.rank = run.score > 0 ? recordScore({ score: run.score, wave: run.wave, kills: run.kills, map: world.map.id, diff: run.diff, date: todayKey() }) : -1;
+  summary.candy = run.candy || 0; summary.mode = run.mode;
+  summary.rank = run.score > 0 ? recordScore({ score: run.score, wave: run.wave, kills: run.kills, map: world.map.id, diff: run.diff, mode: run.mode, date: todayKey() }) : -1;
   profile.stats.bestWave = Math.max(profile.stats.bestWave, quit ? run.wave - (waves.active ? 1 : 0) : run.wave);
   profile.stats.bestScore = Math.max(profile.stats.bestScore, run.score);
   run.active = false; saveProfile(true);
@@ -683,6 +686,7 @@ bind('#btnPlay', () => { ui.openPlay(); });
 bind('#btnLoadout', () => ui.openArmory('loadout', 'menu'));
 bind('#btnShop', () => ui.openArmory('shop', 'menu'));
 bind('#btnQuests', () => ui.openQuests('menu'));
+bind('#btnStudio', () => studio.open('menu'));
 bind('#btnSettings', () => ui.openSettings('menu'));
 bind('#btnPlayBack', () => { ui.show('menu'); ui.renderProfile(); });
 bind('#btnDeploy', () => startRun());
@@ -693,7 +697,8 @@ bind('#btnQuit', () => gameOver(true));
 bind('#btnRetry', () => startRun());
 bind('#btnOverShop', () => ui.openArmory('shop', 'over'));
 bind('#btnOverMenu', () => toMenu());
-$('#mapCards').addEventListener('click', () => { if (world.map && world.map.id !== profile.map && state === 'menu') loadMap(profile.map); });
+$('#mapCards').addEventListener('click', () => { if (world.map && (world.map.id !== profile.map || world.mode !== wantedMode()) && state === 'menu') loadMap(profile.map); });
+$('#modeCards').addEventListener('click', () => { if (world.map && world.mode !== wantedMode() && state === 'menu') loadMap(profile.map); });
 document.querySelectorAll('.btn').forEach(b => b.addEventListener('mouseenter', () => SFX.ui()));
 if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) $('#touchNote').hidden = false;
 
@@ -707,7 +712,7 @@ function tick(dt) {
   if (state === 'playing') {
     run.time += dt; run.multiT = Math.max(0, run.multiT - dt);
     if (run.comboT > 0) { run.comboT -= dt; if (run.comboT <= 0) { run.comboT = 0; run.combo = 0; } }
-    updatePlayer(dt); updateWeapon(dt); updateStations(dt); updateNav(dt);
+    updatePlayer(dt); updateWeapon(dt); updateStations(dt); updateNav(dt); updateFever(dt);
     for (const e of enemies.slice()) if (!e.dead) e.update(dt);
     updateBolts(dt); updateOrbs(dt); updateArcs(dt); updatePlasma(dt); updateGrenades(dt); updateBarrels(dt); updatePickups(dt); updateTurrets(dt); updateCoins(dt); updateDelayed(dt); updateStuck(dt); updateWaves(dt);
     updateCamera(dt); updateViewmodel(dt); ui.update(dt);
@@ -803,7 +808,7 @@ function pollGamepad(dt) {
 }
 
 // debug / test hooks
-window.FB = { get state() { return state; }, run, player, enemies, waves, profile: () => profile, world, startRun, startWave, spawnEnemy, spawnBoss, chooseBuff, gameOver, toMenu, openShop, loadMap, tick, render, get boss() { return boss; }, damageEnemy, explosion, throwGrenade, callAirstrike, deployTurret, weaponRuntime, equip, setupLoadout, waveCleared, fire: () => fire(weaponRuntime(), ammo[G.cur]), G, ammo: () => ammo, loadout: () => loadout, questEvent, addCoins, addXp, interact, tryMantle, roundMults, perf, get stations() { return world.stations; } };
+window.FB = { get state() { return state; }, run, player, enemies, waves, profile: () => profile, world, startRun, startWave, spawnEnemy, spawnBoss, chooseBuff, gameOver, toMenu, openShop, loadMap, tick, render, get boss() { return boss; }, damageEnemy, explosion, throwGrenade, callAirstrike, deployTurret, weaponRuntime, equip, setupLoadout, waveCleared, fire: () => fire(weaponRuntime(), ammo[G.cur]), G, ammo: () => ammo, loadout: () => loadout, questEvent, addCoins, addXp, interact, tryMantle, roundMults, perf, studio, addCandy, get stations() { return world.stations; } };
 
 loadMap(profile.map);
 ui.renderProfile();

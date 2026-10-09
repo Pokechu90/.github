@@ -183,6 +183,24 @@ const FX = new Particles(3500, THREE.AdditiveBlending, T.spark);
 const SMOKE = new Particles(1000, THREE.NormalBlending, T.smoke);
 SMOKE.pts.renderOrder = 1; FX.pts.renderOrder = 2;
 const C = h => new THREE.Color(h);
+// Shared geometry cache. Enemies, projectiles and pickups are created and destroyed constantly; building
+// fresh geometry for each one leaked GPU buffers (three.js keeps them until dispose()), so identical
+// shapes share one geometry. Never mutate a cached geometry: scale or rotate the mesh instead.
+const GEOM = (() => {
+  const cache = new Map();
+  const get = (type, args, make) => { const k = type + args.map(a => typeof a === 'number' ? +a.toFixed(4) : a).join(','); let g = cache.get(k); if (!g) { g = make(); cache.set(k, g); } return g; };
+  return {
+    box: (...a) => get('b', a, () => new THREE.BoxGeometry(...a)),
+    sphere: (...a) => get('s', a, () => new THREE.SphereGeometry(...a)),
+    cyl: (...a) => get('c', a, () => new THREE.CylinderGeometry(...a)),
+    cone: (...a) => get('k', a, () => new THREE.ConeGeometry(...a)),
+    torus: (...a) => get('t', a, () => new THREE.TorusGeometry(...a)),
+    octa: (...a) => get('o', a, () => new THREE.OctahedronGeometry(...a)),
+    ring: (...a) => get('r', a, () => new THREE.RingGeometry(...a)),
+    plane: (...a) => get('p', a, () => new THREE.PlaneGeometry(...a)),
+    size: () => cache.size,
+  };
+})();
 const COL = { spark: C(0xffd27a), sparkEnd: C(0xff5a10), white: C(0xffffff), fire: C(0xffb040), fireEnd: C(0x802000), dust: C(0x8a8580), dustEnd: C(0x5a5652), smoke: C(0x3a3634), smokeEnd: C(0x6a6460), elec: C(0x9fdcff), elecEnd: C(0x2060ff), oil: C(0x151515), red: C(0xff4020), redEnd: C(0x600000), teal: C(0x40ffd0), amber: C(0xffa030), black: C(0x000000), coin: C(0xffd24a), purple: C(0xc060ff), plasma: C(0x6cf6ff), plasmaEnd: C(0x2040ff), green: C(0x5dff9a) };
 function randDir(out, spread = 1) { out.set(rand(-1, 1), rand(-1, 1), rand(-1, 1)); if (out.lengthSq() < 1e-4) out.set(0, 1, 0); return out.normalize().multiplyScalar(spread); }
 function sparks(p, n, normal, speed = 8, col0 = COL.spark, col1 = COL.sparkEnd) {
@@ -327,9 +345,9 @@ const dmgNums = [];
 }
 let dmgNumI = 0;
 function damageNumber(p, text, cls = '') {
-  if (!settings.dmgNumbers && cls !== 'coin' && cls !== 'block') return;
+  if (!settings.dmgNumbers && cls !== 'coin' && cls !== 'block' && cls !== 'candy') return;
   const d = dmgNums[dmgNumI++ % dmgNums.length];
-  d.pos.copy(p); d.t = 0; d.life = cls === 'coin' ? 1.1 : 0.85; d.vx = rand(-0.6, 0.6); d.vy = rand(1.6, 2.4);
+  d.pos.copy(p); d.t = 0; d.life = cls === 'coin' || cls === 'candy' ? 1.1 : 0.85; d.vx = rand(-0.6, 0.6); d.vy = rand(1.6, 2.4);
   if (d.cls !== cls) { d.el.className = 'dn' + (cls ? ' ' + cls : ''); d.cls = cls; }
   d.el.textContent = text;
 }

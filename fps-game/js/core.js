@@ -62,6 +62,8 @@ function defaultProfile() {
     stats: { kills: 0, headshots: 0, bestWave: 0, bestScore: 0, bosses: 0, runs: 0, spent: 0, flawless: 0, explosiveKills: 0, weaponKills: {} },
     difficulty: 'normal', map: 'yard',
     daily: { day: '', q: [] }, board: {},
+    // Halloween event: candy corn, Trick-or-Treat progress, Dracula's drop pity counter, chosen game mode
+    candy: 0, hq: {}, fangPity: 0, mode: 'standard',
   };
 }
 function loadProfile() {
@@ -71,7 +73,7 @@ function loadProfile() {
   const out = Object.assign(d, p);
   out.stats = Object.assign(defaultProfile().stats, p.stats || {});
   out.stats.weaponKills = Object.assign({}, (p.stats && p.stats.weaponKills) || {});
-  for (const k of ['weapons', 'attachments', 'equipped', 'skin', 'upgrades', 'skins', 'quests', 'board']) out[k] = Object.assign({}, d[k], p[k] || {});
+  for (const k of ['weapons', 'attachments', 'equipped', 'skin', 'upgrades', 'skins', 'quests', 'board', 'hq']) out[k] = Object.assign({}, d[k], p[k] || {});
   out.daily = p.daily && Array.isArray(p.daily.q) ? p.daily : d.daily;
   out.loadout = Object.assign(defaultProfile().loadout, p.loadout || {});
   return out;

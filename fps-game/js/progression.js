@@ -74,9 +74,9 @@ function dailyEvent(ev, amount, extra) {
 }
 
 // ---------------- personal leaderboards ----------------
-function boardKey(map, diff) { return `${map}|${diff}`; }
+function boardKey(map, diff, mode) { return mode === 'halloween' ? `${map}|${diff}|night` : `${map}|${diff}`; }
 function recordScore(entry) {
-  const k = boardKey(entry.map, entry.diff), list = profile.board[k] || (profile.board[k] = []);
+  const k = boardKey(entry.map, entry.diff, entry.mode), list = profile.board[k] || (profile.board[k] = []);
   list.push(entry); list.sort((a, b) => b.score - a.score); list.length = Math.min(list.length, 5);
   saveProfile(); return list.indexOf(entry);
 }
@@ -162,6 +162,7 @@ const QUESTS = [
 function questState(id) { return profile.quests[id] || (profile.quests[id] = { p: 0, done: false }); }
 function questEvent(ev, amount = 1, extra = {}) {
   dailyEvent(ev, amount, extra);
+  halloweenEvent(ev, amount, extra);
   for (const q of QUESTS) {
     if (q.ev !== ev) continue;
     const st = questState(q.id); if (st.done) continue;

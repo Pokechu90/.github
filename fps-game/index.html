@@ -32,7 +32,7 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
 .brand p{max-width:46ch;color:var(--muted);line-height:1.6;margin:0 0 26px}
 .actions{display:flex;flex-direction:column;gap:9px;max-width:320px}
 .btn{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.03);padding:13px 20px;text-align:left;font-family:var(--display);font-weight:600;font-size:16px;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));transition:background .15s,transform .15s,border-color .15s;display:flex;justify-content:space-between;align-items:center;gap:12px}
-.btn small{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--muted);text-transform:none}
+.btn small{white-space:nowrap;font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--muted);text-transform:none}
 .btn:hover:not(:disabled){background:rgba(245,165,36,.12);border-color:rgba(245,165,36,.5);transform:translateX(4px)}
 .btn:focus-visible,.chip:focus-visible,.tab:focus-visible,.card:focus-visible,.witem:focus-visible,.bcard:focus-visible,.skin:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
 .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
@@ -291,6 +291,54 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
 .dn.block{color:var(--block);font-size:12px;letter-spacing:.14em}
 .dn.coin{color:var(--coin);font-size:14px}
 .dn.heal{color:var(--heal);font-size:14px}
+.dn.candy{color:#ffb238;font-size:13px}
+/* ---------- Halloween event ---------- */
+.candy{display:inline-block;width:.75em;height:.9em;vertical-align:-.08em;margin-right:.3em;clip-path:polygon(50% 100%,0 0,100% 0);background:linear-gradient(180deg,#fff6e0 0 30%,#ff9a1a 30% 65%,#ffd23a 65%);filter:drop-shadow(0 0 3px rgba(255,150,30,.6))}
+#candyNum{margin-left:12px;color:#ffb238}
+.event-banner{margin-top:18px;max-width:560px;padding:12px 14px;border:1px solid rgba(255,122,30,.55);background:linear-gradient(135deg,rgba(255,110,20,.16),rgba(120,30,140,.18));border-radius:10px;display:grid;gap:4px}
+.event-banner b{font-family:var(--display);letter-spacing:.22em;text-transform:uppercase;font-size:12px;color:#ff9a2a}
+.event-banner span{color:var(--text);font-size:13px;line-height:1.45}
+html.halloween .brand h1 span{-webkit-text-stroke-color:#ff8a1e;text-shadow:0 0 28px rgba(255,120,20,.25)}
+html.halloween #menu{background:radial-gradient(1200px 600px at 80% 10%,rgba(150,40,160,.22),transparent 60%),radial-gradient(900px 500px at 10% 90%,rgba(255,110,20,.16),transparent 60%),linear-gradient(90deg,rgba(8,5,12,.94) 0%,rgba(8,5,12,.8) 40%,rgba(8,5,12,.15) 72%,rgba(8,5,12,.4) 100%)}
+.modes .card.night{border-color:rgba(255,122,30,.5)}
+.modes .card.night.on{border-color:#ff8a1e;box-shadow:0 0 0 1px #ff8a1e inset,0 0 24px rgba(255,120,20,.25)}
+.modes .card .ct b small{color:#ff9a2a;font-size:10px;letter-spacing:.18em;margin-left:6px}
+#fever{display:flex;align-items:center;gap:10px;justify-content:center;font-family:var(--display);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#9aff6a;text-shadow:0 0 8px rgba(120,255,80,.5);margin-bottom:6px}
+#fever .fbar{width:140px;height:5px;background:rgba(255,255,255,.12);border-radius:3px;overflow:hidden}
+#fever .fbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#4aff6a,#d8ff4a);box-shadow:0 0 8px #9aff6a}
+#fever em{font-style:normal;color:#eaffd0}
+.hw-lbl{color:#ff9a2a}
+.contract{border:1px solid rgba(154,255,106,.35);background:rgba(154,255,106,.05);border-radius:10px;padding:12px 14px;display:grid;gap:10px}
+.contract .ch{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
+.contract .ch b{font-family:var(--display);color:#9aff6a;letter-spacing:.08em}
+.contract .steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px}
+.contract .step{background:rgba(0,0,0,.25);border-radius:8px;padding:8px 10px;font-size:12px;display:grid;gap:4px}
+.contract .step.done{opacity:.6}
+.contract .step b{font-size:13px}
+.wallets{display:flex;gap:18px;align-items:center}
+.candy-w{color:#ffb238}
+.studio .st-grid{display:grid;grid-template-columns:210px minmax(0,1fr) 300px;gap:14px;align-items:start}
+.st-view{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:radial-gradient(ellipse at 50% 40%,#2a2333,#0b0d12 75%);aspect-ratio:4/3;min-height:260px}
+.st-view canvas{width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+.st-view canvas:active{cursor:grabbing}
+.st-name{position:absolute;left:14px;top:12px;font-family:var(--display);font-size:15px;letter-spacing:.06em}
+.st-name small{display:block;color:var(--muted);font-size:11px;letter-spacing:.04em;margin-top:2px;font-family:var(--body,inherit)}
+.st-hint{position:absolute;left:0;right:0;bottom:10px;text-align:center;color:var(--muted);font-size:11px}
+.st-hint .chip{padding:3px 8px;font-size:11px;margin-left:6px}
+.st-skins{display:grid;gap:8px;max-height:560px;overflow-y:auto}
+.st-skin{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.03);text-align:left;color:var(--text);cursor:pointer;font:inherit}
+.st-skin.on{border-color:var(--accent);background:rgba(245,165,36,.08)}
+.st-skin.sel{box-shadow:0 0 0 1px #fff inset}
+.st-skin i{width:44px;height:30px;border-radius:6px;background-size:cover;background-position:center}
+.st-skin b{display:block;font-size:13px}
+.st-skin small{color:var(--muted);font-size:11px}
+.st-skin .hw{color:#ff9a2a}
+.st-skin .price{font-size:12px;white-space:nowrap;text-align:right}
+.st-skin .price .note{display:block;white-space:normal;max-width:96px;color:var(--muted);font-size:11px;line-height:1.3}
+.st-act{display:flex;gap:8px;flex-wrap:wrap;margin-top:4px}
+.perks{display:grid;gap:4px;margin:8px 0;padding:10px 12px;border:1px solid rgba(255,122,30,.4);border-radius:10px;background:rgba(255,110,20,.06);font-size:12.5px}
+.perks b{color:#ff9a2a;font-family:var(--display);letter-spacing:.12em;font-size:11px;text-transform:uppercase}
+@media (max-width:900px){.studio .st-grid{grid-template-columns:1fr}.st-skins{max-height:none}}
 
 #dmgDirs{position:absolute;left:50%;top:50%;width:0;height:0}
 .dd{position:absolute;left:-90px;top:-90px;width:180px;height:180px;border-radius:50%;border-top:4px solid var(--danger);filter:drop-shadow(0 0 6px rgba(255,74,61,.8));mask:linear-gradient(90deg,transparent 30%,#000 45%,#000 55%,transparent 70%);-webkit-mask:linear-gradient(90deg,transparent 30%,#000 45%,#000 55%,transparent 70%);transition:opacity 1s linear}
@@ -331,6 +379,7 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
   #mapWrap,#killfeed,#bottomMid,#toasts,#buffRow{display:none}
   #score{left:16px}
 }
+@media (max-height:820px) and (min-width:901px){ #menu{overflow-y:auto} .brand h1{font-size:clamp(44px,6.4vw,92px);margin:10px 0 12px} .brand p{margin-bottom:16px} .actions{gap:7px} .actions .btn{padding:10px 18px} .event-banner{margin-top:12px} }
 @media (max-width:460px){ .diff{grid-template-columns:1fr} .wstats{grid-template-columns:1fr} }
 @media (prefers-reduced-motion:reduce){ .btn,.kf,#streak.show,.toast,.bcard{transition:none;animation:none} }
 </style>
@@ -348,7 +397,7 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
   <div id="streak"></div>
   <div id="prompt"></div>
 
-  <div class="pnl" id="score"><div class="lbl">Score</div><b id="scoreNum">0</b><div id="coinNum"><span class="coin"></span><span id="coinVal">0</span><span id="coinPop"></span></div><div id="mult"></div><div id="rmult"><b id="rmTotal">×1.0</b><span id="rmParts">Wave ×1.0</span></div><div class="combo"><span>Combo <b id="comboNum">0</b></span><div class="cbar"><i id="comboFill"></i></div></div></div>
+  <div class="pnl" id="score"><div class="lbl">Score</div><b id="scoreNum">0</b><div id="coinNum"><span class="coin"></span><span id="coinVal">0</span><span id="coinPop"></span><span id="candyNum" hidden><span class="candy"></span><span id="candyVal">0</span></span></div><div id="mult"></div><div id="rmult"><b id="rmTotal">×1.0</b><span id="rmParts">Wave ×1.0</span></div><div class="combo"><span>Combo <b id="comboNum">0</b></span><div class="cbar"><i id="comboFill"></i></div></div></div>
   <div id="toasts"></div>
   <div class="pnl" id="topbar">
     <div id="waveBox"><div class="lbl">Wave</div><b id="waveNum">1</b></div>
@@ -375,6 +424,7 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
 
   <div id="bottomMid">
     <div id="powerups"></div>
+    <div id="fever" hidden><span>Fever <b id="feverN">0</b></span><div class="fbar"><i id="feverFill"></i></div><em id="feverDmg">+0%</em></div>
     <div id="interBar" hidden></div>
     <div id="streakMeter">
       <div class="sm-top"><span>Killstreak <b id="streakNum">0</b></span><span id="streakReady"></span></div>
@@ -402,9 +452,11 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
       <button class="btn primary" id="btnPlay">Play <small>Pick a map</small></button>
       <button class="btn" id="btnLoadout">Loadout <small>Weapons & attachments</small></button>
       <button class="btn" id="btnShop">Shop <small>Upgrades & unlocks</small></button>
+      <button class="btn" id="btnStudio">Skin Studio <small id="studioSub">360° preview · skins</small></button>
       <button class="btn" id="btnQuests">Quests <small id="questCount">0 / 0</small></button>
       <button class="btn" id="btnSettings">Settings <small>Controls, audio, graphics</small></button>
     </div>
+    <div class="event-banner" id="eventBanner" hidden><b>Halloween event</b><span>Night of Terror is live: skeleton archers, zombies and Dracula. Earn candy corn for 24 new skins, unlock Reaper's Eye and hunt Dracula for Vampire's Fang.</span></div>
     <div class="touch-note" id="touchNote" hidden>Foundry Breach needs a keyboard and mouse. Open this page on a desktop browser to play.</div>
   </div>
   <aside class="profile-card" id="profileCard"></aside>
@@ -414,6 +466,7 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
   <div class="sheet wide">
     <h2>Deploy</h2>
     <p class="sub">Choose where to make your stand. New sites unlock as you level up or survive longer.</p>
+    <div id="modeWrap" hidden><div class="lbl">Mode</div><div class="diff modes" id="modeCards"></div></div>
     <div class="lbl">Map</div>
     <div class="maps" id="mapCards"></div>
     <div class="lbl">Difficulty</div>
@@ -445,6 +498,12 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
     <p class="sub">Progress carries across runs. Rewards are granted the moment a quest completes.</p>
     <div class="lbl" id="dailyLbl">Daily challenges</div>
     <div class="dailies" id="dailyList"></div>
+    <div id="hwQuests" hidden>
+      <div class="lbl hw-lbl">Halloween · The Reaper's Contract</div>
+      <div class="contract" id="contractBox"></div>
+      <div class="lbl hw-lbl">Halloween · Trick or treat</div>
+      <div class="qlist" id="hwList"></div>
+    </div>
     <div class="lbl">Career quests</div>
     <div class="qlist" id="questList"></div>
     <div class="actions"><button class="btn primary" id="btnQuestBack">Done</button></div>
@@ -515,6 +574,21 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
   </div>
 </section>
 
+<section id="studio" class="screen modal" hidden>
+  <div class="sheet wide studio">
+    <div class="sheet-head">
+      <div><h2>Skin Studio</h2><p class="sub">Drag the weapon to spin it 360°, scroll to zoom. Halloween skins are bought with candy corn.</p></div>
+      <div class="wallets"><div class="wallet"><span class="coin"></span><span id="stCoins">0</span></div><div class="wallet candy-w"><span class="candy"></span><span id="stCandy">0</span></div></div>
+    </div>
+    <div class="st-grid">
+      <div class="wlist" id="stGuns"></div>
+      <div class="st-view"><canvas id="stCanvas"></canvas><div class="st-name" id="stName"></div><div class="st-hint">Drag to rotate · scroll to zoom · <button class="chip" id="stSpin">Auto-spin on</button></div></div>
+      <div class="st-skins" id="stSkins"></div>
+    </div>
+    <div class="actions" style="flex-direction:row;flex-wrap:wrap"><button class="btn primary" id="stBack">Done</button></div>
+  </div>
+</section>
+
 <section id="over" class="screen modal" hidden>
   <div class="sheet" style="width:min(640px,100%)">
     <h2 id="overTitle">Overrun</h2>
@@ -552,6 +626,8 @@ kbd{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-b
 <script src="js/progression.js"></script>
 <script src="js/enemies.js"></script>
 <script src="js/factions.js"></script>
+<script src="js/halloween.js"></script>
 <script src="js/combat.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/studio.js"></script>
 <script src="js/game.js"></script>

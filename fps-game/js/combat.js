@@ -15,7 +15,7 @@ function damageEnemy(e, base, info) {
   const mods = buffMods();
   let amount = base;
   const direct = info.source === 'bullet' || info.source === 'plasma';
-  if (direct) amount *= partMult(info.part, (info.headMult || 2) + mods.head) * mods.damage;
+  if (direct) amount *= partMult(info.part, (info.headMult || 2) + mods.head) * mods.damage * weaponDamageMul(info.weapon);
   else if (info.source === 'explosion' || info.source === 'airstrike') amount *= mods.damage * (info.weapon === 'frag' ? mods.blast : 1);
   const r = e.damage(amount, info);
   const pt = info.point || e.center(tv4);
@@ -26,6 +26,7 @@ function damageEnemy(e, base, info) {
     const cls = info.part === 'head' && direct ? 'head' : info.part === 'weak' ? 'weak' : '';
     damageNumber(tv4.copy(pt).add(tv3.set(rand(-.2, .2), 0.2, rand(-.2, .2))), Math.round(amount) + (cls === 'head' ? '!' : ''), cls);
     if (mods.leech && direct && player.alive) { const heal = r.dealt * mods.leech; player.hp = Math.min(maxHp(), player.hp + heal); }
+    if (direct) lifesteal(info.weapon, r.dealt);
   }
   r.head = info.part === 'head' && direct;
   return r;
@@ -40,12 +41,12 @@ function solidModel(kind) {
   const g = new THREE.Group();
   const add = (geo, mat, x, y, z, rx = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.rotation.x = rx; g.add(m); return m; };
   if (kind === 'dagger') {
-    add(new THREE.BoxGeometry(0.035, 0.008, 0.26), solidMats.steel, 0, 0, 0.08); add(new THREE.BoxGeometry(0.08, 0.02, 0.02), solidMats.steel, 0, 0, -0.06); add(new THREE.CylinderGeometry(0.013, 0.013, 0.1, 6), solidMats.leather, 0, 0, -0.12, Math.PI / 2);
+    add(GEOM.box(0.035, 0.008, 0.26), solidMats.steel, 0, 0, 0.08); add(GEOM.box(0.08, 0.02, 0.02), solidMats.steel, 0, 0, -0.06); add(GEOM.cyl(0.013, 0.013, 0.1, 6), solidMats.leather, 0, 0, -0.12, Math.PI / 2);
   } else {
     const shaftMat = kind === 'bone' ? solidMats.bone : solidMats.wood;
-    add(new THREE.CylinderGeometry(0.011, 0.011, 0.78, 5), shaftMat, 0, 0, 0, Math.PI / 2);
-    add(new THREE.ConeGeometry(0.028, 0.09, 6), kind === 'bone' ? solidMats.bone : solidMats.steel, 0, 0, 0.43, Math.PI / 2);
-    for (const r of [0, Math.PI / 2]) { const f = add(new THREE.PlaneGeometry(0.05, 0.13), solidMats.fletch, 0, 0, -0.33, Math.PI / 2); f.rotation.y = r; }
+    add(GEOM.cyl(0.011, 0.011, 0.78, 5), shaftMat, 0, 0, 0, Math.PI / 2);
+    add(GEOM.cone(0.028, 0.09, 6), kind === 'bone' ? solidMats.bone : solidMats.steel, 0, 0, 0.43, Math.PI / 2);
+    for (const r of [0, Math.PI / 2]) { const f = add(GEOM.plane(0.05, 0.13), solidMats.fletch, 0, 0, -0.33, Math.PI / 2); f.rotation.y = r; }
   }
   return g;
 }
@@ -107,7 +108,7 @@ function updateBolts(dt) {
 // slow explosive orbs (tank shells)
 const orbs = [];
 function spawnOrb(p, dir, speed, dmg, radius, color) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  const m = new THREE.Mesh(GEOM.sphere(0.28, 12, 10), new THREE.MeshBasicMaterial({ color: 0xffffff }));
   const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); glow.scale.set(2.4, 2.4, 1); m.add(glow);
   m.position.copy(p); scene.add(m);
   orbs.push({ m, pos: p.clone(), vel: dir.clone().multiplyScalar(speed), dmg, radius, color: new THREE.Color(color), hex: color, t: 0 });
@@ -124,10 +125,11 @@ function updateOrbs(dt) {
 // arcing missiles / mortars with a warning ring at the target
 const ringTex = tex(T.ring, 1, 1, false);
 const arcs = [];
+const arcGeo = new THREE.CylinderGeometry(0.12, 0.2, 0.9, 8); arcGeo.rotateX(Math.PI / 2);
+const arcMat = new THREE.MeshStandardMaterial({ color: 0x30343a, metalness: 0.7, roughness: 0.4 });
 function spawnArc(from, target, T, dmg, radius, color) {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 0.9, 8), new THREE.MeshStandardMaterial({ color: 0x30343a, metalness: 0.7, roughness: 0.4 }));
-  m.geometry.rotateX(Math.PI / 2); scene.add(m);
-  const ring = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2), new THREE.MeshBasicMaterial({ map: ringTex, color: 0xff2a1a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const m = new THREE.Mesh(arcGeo, arcMat); scene.add(m);
+  const ring = new THREE.Mesh(GEOM.plane(radius * 2, radius * 2), new THREE.MeshBasicMaterial({ map: ringTex, color: 0xff2a1a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   ring.rotation.x = -Math.PI / 2; ring.position.copy(target).setY(target.y + 0.06); scene.add(ring);
   const g = 16, v0 = new V3().subVectors(target, from).addScaledVector(new V3(0, -g, 0), -0.5 * T * T).divideScalar(T);
   arcs.push({ m, ring, from: from.clone(), target: target.clone(), T, t: 0, v0, g, dmg, radius, color, prev: from.clone() });
@@ -156,7 +158,7 @@ const plasmaRay = new THREE.Raycaster();
 function spawnPlasma(p, dir, stats) {
   let s = plasmaPool.find(x => !x.alive);
   if (!s) {
-    const g = new THREE.Group(); const core = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xe0ffff })); g.add(core);
+    const g = new THREE.Group(); const core = new THREE.Mesh(GEOM.sphere(0.09, 10, 8), new THREE.MeshBasicMaterial({ color: 0xe0ffff })); g.add(core);
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x6cf6ff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true })); glow.scale.set(1.1, 1.1, 1); g.add(glow);
     scene.add(g); s = { g, pos: new V3(), vel: new V3(), alive: false }; plasmaPool.push(s);
   }
@@ -243,7 +245,7 @@ function updateBarrels(dt) {
       if (b.fuse <= 0) {
         b.dead = true; b.mesh.visible = false; const ci = world.colliders.indexOf(b.col); if (ci >= 0) world.colliders.splice(ci, 1);
         explosion(b.pos.clone().setY(b.pos.y + 0.2), 6.5, 130, { owner: 'player', source: 'explosion', weapon: 'drum' });
-        for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(new THREE.BoxGeometry(rand(.1, .3), rand(.1, .4), .03), M.drum); m.position.copy(b.pos); scene.add(m); debris.push({ m, v: randDir(new V3(), rand(5, 11)).setY(rand(5, 10)), w: new V3(rand(-12, 12), rand(-12, 12), rand(-12, 12)), t: 4 }); }
+        for (let i = 0; i < 6; i++) { const m = new THREE.Mesh(GEOM.box(1, 1, 0.03), M.drum); m.scale.set(rand(.1, .3), rand(.1, .4), 1); m.position.copy(b.pos); scene.add(m); debris.push({ m, v: randDir(new V3(), rand(5, 11)).setY(rand(5, 10)), w: new V3(rand(-12, 12), rand(-12, 12), rand(-12, 12)), t: 4 }); }
       }
     }
   }
@@ -266,7 +268,7 @@ function updateDebris(dt) {
 }
 
 // ---------------- grenades ----------------
-const nadeGeo = new THREE.SphereGeometry(0.09, 12, 10);
+const nadeGeo = GEOM.sphere(0.09, 12, 10);
 const nadeMats = { frag: new THREE.MeshStandardMaterial({ color: 0x3f4a30, roughness: 0.6, metalness: 0.4 }), stun: new THREE.MeshStandardMaterial({ color: 0x2a4a6a, roughness: 0.4, metalness: 0.6, emissive: 0x1a4a8a, emissiveIntensity: 0.4 }) };
 function throwGrenade(type) {
   const key = type === 'stun' ? 'stuns' : 'frags';
@@ -332,10 +334,10 @@ const PK = {
 function spawnPickup(type, p) {
   const g = new THREE.Group(); const def = PK[type];
   const glow = new THREE.MeshStandardMaterial({ color: def.col, emissive: def.col, emissiveIntensity: 0.9, roughness: 0.4 });
-  const add = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); g.add(m); return m; };
+  const add = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(GEOM.box(w, h, d), mat); m.position.set(x, y, z); g.add(m); return m; };
   if (def.power) {
-    const oct = new THREE.Mesh(new THREE.OctahedronGeometry(0.34), new THREE.MeshStandardMaterial({ color: def.col, emissive: def.col, emissiveIntensity: 1.2, metalness: 0.5, roughness: 0.2 })); g.add(oct);
-    const col = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 5, 12, 1, true), new THREE.MeshBasicMaterial({ color: def.col, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); col.position.y = 2; g.add(col);
+    const oct = new THREE.Mesh(GEOM.octa(0.34), new THREE.MeshStandardMaterial({ color: def.col, emissive: def.col, emissiveIntensity: 1.2, metalness: 0.5, roughness: 0.2 })); g.add(oct);
+    const col = new THREE.Mesh(GEOM.cyl(0.4, 0.4, 5, 12, 1, true), new THREE.MeshBasicMaterial({ color: def.col, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })); col.position.y = 2; g.add(col);
   } else {
     add(0.5, 0.34, 0.36, botDark, 0, 0, 0);
     if (type === 'health') { add(0.26, 0.08, 0.37, glow, 0, 0, 0); add(0.08, 0.26, 0.37, glow, 0, 0, 0); }
@@ -409,7 +411,10 @@ function onEnemyKilled(e, info) {
   if (info.source === 'explosion' || info.source === 'airstrike') { profile.stats.explosiveKills++; questEvent('explosiveKill'); }
   run.multi = run.multiT > 0 ? run.multi + 1 : 1; run.multiT = 1.6;
   run.combo++; run.comboT = COMBO_WINDOW; run.bestCombo = Math.max(run.bestCombo, run.combo);
-  questEvent('killType', 1, { type: e.role || e.kind }); questEvent('combo', run.combo);
+  questEvent('killType', 1, { type: e.role || e.kind, kind: e.kind }); questEvent('combo', run.combo);
+  onFeverKill(weapon);
+  const candy = candyForKill(e, head);
+  if (candy) { const got = addCandy(candy, p); damageNumber(tv.copy(p).setY(p.y + 1.0), `+${got} candy`, 'candy'); }
   if (head && !reduceMotion) hitStop = Math.max(hitStop, 0.045);
   // killstreak rewards
   run.killstreak++;
@@ -439,7 +444,7 @@ function rollRareDrop() {
   const pool = [];
   for (const w of WEAPONS) if (weaponOwned(w.id)) for (const a of ATT_IDS) if (!attOwned(w.id, a)) pool.push({ att: [w.id, a], weight: 6 });
   for (const s of ['scorch', 'circuit', 'arctic', 'crimson', 'desert']) if (!profile.skins[s]) pool.push({ skin: s, weight: s === 'scorch' ? 6 : 2 });
-  for (const w of WEAPONS) if (!weaponOwned(w.id) && w.id !== 'plasma') pool.push({ weapon: w.id, weight: 1.5 });
+  for (const w of WEAPONS) if (!weaponOwned(w.id) && w.id !== 'plasma' && !w.event) pool.push({ weapon: w.id, weight: 1.5 });
   if (!pool.length) return { coins: 1000, xp: 800 };
   let tot = pool.reduce((s, x) => s + x.weight, 0), r = Math.random() * tot;
   for (const x of pool) { r -= x.weight; if (r <= 0) { delete x.weight; return x; } }
@@ -458,8 +463,13 @@ function onBossKilled(b) {
   questEvent('boss');
   if (!b.tookDamage) questEvent('bossFlawless');
   const drop = rollRareDrop(); grantReward(drop);
-  const txt = rewardText(drop); run.drops.push(txt);
+  let txt = rewardText(drop); run.drops.push(txt);
   ui.toast('Rare drop', txt, 'drop');
+  if (b.kind === 'dracula') {
+    questEvent('dracula');
+    const fang = draculaDrop();
+    if (fang) { run.drops.push(fang); txt = `${fang}!`; SFX.levelUp(); ui.toast("Vampire's Fang", 'Dracula dropped his shotgun: lifesteal and a built-in holo sight', 'drop'); }
+  }
   ui.banner(`${b.name} destroyed`, `+${fmt(coins)} coins · ${txt}`, 3.2);
   spawnPickup('health', tv.copy(p).add(tv2.set(2, 0, 0))); spawnPickup('ammo', tv.copy(p).add(tv2.set(-2, 0, 0)));
   Music.play('combat');
@@ -500,11 +510,11 @@ function deployTurret() {
   run.turrets--;
   const g = new THREE.Group(); g.position.copy(p); scene.add(g);
   const mat = new THREE.MeshStandardMaterial({ color: 0x3a4148, metalness: 0.8, roughness: 0.4 }), acc = new THREE.MeshStandardMaterial({ color: 0xf5a524, roughness: 0.4 });
-  for (let i = 0; i < 3; i++) { const leg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.9, 0.06), mat); const a = i / 3 * Math.PI * 2; leg.position.set(Math.cos(a) * 0.3, 0.4, Math.sin(a) * 0.3); leg.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35); g.add(leg); }
+  for (let i = 0; i < 3; i++) { const leg = new THREE.Mesh(GEOM.box(0.06, 0.9, 0.06), mat); const a = i / 3 * Math.PI * 2; leg.position.set(Math.cos(a) * 0.3, 0.4, Math.sin(a) * 0.3); leg.rotation.set(Math.sin(a) * 0.35, 0, -Math.cos(a) * 0.35); g.add(leg); }
   const head = new THREE.Group(); head.position.y = 0.95; g.add(head);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.3, 0.5), acc); head.add(body);
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.6, 8), mat); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.03, -0.5); head.add(barrel);
-  const eye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.05, 0.02), new THREE.MeshBasicMaterial({ color: 0x5ff2ff })); eye.position.set(0, 0.08, -0.26); head.add(eye);
+  const body = new THREE.Mesh(GEOM.box(0.4, 0.3, 0.5), acc); head.add(body);
+  const barrel = new THREE.Mesh(GEOM.cyl(0.04, 0.05, 0.6, 8), mat); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.03, -0.5); head.add(barrel);
+  const eye = new THREE.Mesh(GEOM.box(0.2, 0.05, 0.02), new THREE.MeshBasicMaterial({ color: 0x5ff2ff })); eye.position.set(0, 0.08, -0.26); head.add(eye);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   turrets.push({ g, head, pos: p.clone().setY(p.y + 1), t: 30, fireT: 0, target: null, retarget: 0 });
   SFX.clear(); ui.toast('Turret deployed', '30 seconds of covering fire', 'drop');
@@ -536,7 +546,7 @@ function clearTurrets() { turrets.forEach(t => scene.remove(t.g)); turrets.lengt
 // ---------------- delayed blasts (Volatile mutator) ----------------
 const delayed = [];
 function delayedBlast(p, t, radius, dmg) {
-  const ring = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2, radius * 2), new THREE.MeshBasicMaterial({ map: ringTex, color: 0xffa020, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+  const ring = new THREE.Mesh(GEOM.plane(radius * 2, radius * 2), new THREE.MeshBasicMaterial({ map: ringTex, color: 0xffa020, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
   ring.rotation.x = -Math.PI / 2; ring.position.set(p.x, groundAt(p.x, p.z, p.y) + 0.06, p.z); scene.add(ring);
   delayed.push({ p, t, t0: t, radius, dmg, ring });
 }
