@@ -19,14 +19,19 @@ local FIXED = {
 	glass = { RGB(154, 212, 255), Enum.Material.Glass },
 	laser = { RGB(255, 42, 26), Enum.Material.Neon },
 	cyan = { RGB(108, 246, 255), Enum.Material.Neon },
+	soul = { RGB(154, 255, 106), Enum.Material.Neon },
+	soulglass = { RGB(120, 255, 150), Enum.Material.Glass },
+	blood = { RGB(255, 36, 52), Enum.Material.Neon },
+	bone = { RGB(236, 228, 204), Enum.Material.Marble },
+	fang = { RGB(250, 250, 245), Enum.Material.SmoothPlastic },
 }
 
 local function materials(skin)
 	local s = Config.Skins[skin] or Config.Skins.stock
 	return {
-		metal = { s.metal, s.shiny and Enum.Material.Foil or Enum.Material.Metal },
-		poly = { s.poly, Enum.Material.SmoothPlastic },
-		alt = { s.alt, Enum.Material.SmoothPlastic },
+		metal = { s.metal, s.metalMat or (s.shiny and Enum.Material.Foil or Enum.Material.Metal) },
+		poly = { s.poly, s.polyMat or Enum.Material.SmoothPlastic },
+		alt = { s.alt, s.altMat or Enum.Material.SmoothPlastic },
 		accent = { s.accent, s.glow and Enum.Material.Neon or Enum.Material.SmoothPlastic },
 	}
 end
@@ -55,7 +60,7 @@ local function bx(g, w, h, d, mat, x, y, z, opts)
 	p.Size = Vector3.new(math.max(w * S, 0.01), math.max(h * S, 0.01), math.max(d * S, 0.01))
 	local m = look(g, mat)
 	p.Color, p.Material = m[1], m[2]
-	if mat == "lens" then p.Transparency = 0.7 elseif mat == "glass" then p.Transparency = 0.86 end
+	if mat == "lens" or mat == "soulglass" then p.Transparency = 0.7 elseif mat == "glass" then p.Transparency = 0.86 end
 	local off = CFrame.new(x * S, y * S, z * S) * (opts.rot or CFrame.identity)
 	if opts.parent then off = opts.parent.off * off end
 	return add(g, p, off, opts.sub or (opts.parent and opts.parent.sub))
@@ -82,6 +87,7 @@ local function ring(g, r, mat, x, y, z)
 end
 
 local function arms(g, gripZ, foreZ, foreY)
+	if g.noArms then return end
 	bx(g, 0.055, 0.09, 0.09, "glove", 0.012, -0.07, gripZ)
 	bx(g, 0.08, 0.08, 0.28, "sleeve", 0.05, -0.12, gripZ + 0.15, { rot = CFrame.Angles(0.35, 0.2, 0) })
 	if foreZ then
@@ -284,20 +290,78 @@ function B.plasma(g)
 	return { sightY = 0.07, rail = { 0, 0.045, -0.02 }, muzzleY = 0.005, muzzleZ = -0.5, underY = -0.045, underZ = -0.3, gripZ = 0.06, foreZ = -0.26, foreY = -0.04, hip = V3(0.17, -0.18, -0.48), adsZ = -0.6 }
 end
 
+-- Reaper's Eye: a bone-and-iron marksman rifle with a skull muzzle, a scythe blade and a green Soulglass scope
+function B.reaper(g)
+	bx(g, 0.06, 0.075, 0.42, "metal", 0, 0, -0.02)
+	bx(g, 0.07, 0.07, 0.36, "poly", 0, -0.005, -0.4)
+	for i = 0, 3 do bx(g, 0.074, 0.012, 0.03, "alt", 0, 0.036, -0.28 - i * 0.07) end
+	cy(g, 0.015, 0.44, "metal", 0, 0.008, -0.78)
+	-- skull muzzle with glowing eyes
+	local skull = bx(g, 0.07, 0.07, 0.07, "bone", 0, 0.012, -1.02)
+	bx(g, 0.016, 0.014, 0.004, "soul", -0.016, 0.022, -0.036, { parent = skull })
+	bx(g, 0.016, 0.014, 0.004, "soul", 0.016, 0.022, -0.036, { parent = skull })
+	bx(g, 0.05, 0.016, 0.03, "bone", 0, -0.04, -0.01, { parent = skull })
+	-- scythe blade sweeping back under the barrel
+	bx(g, 0.008, 0.02, 0.26, "metal", 0, -0.06, -0.7, { rot = CFrame.Angles(0.35, 0, 0) })
+	bx(g, 0.006, 0.05, 0.2, "accent", 0, -0.1, -0.58, { rot = CFrame.Angles(0.6, 0, 0) })
+	-- Soulglass scope
+	cy(g, 0.03, 0.3, "poly", 0, 0.09, -0.08); cy(g, 0.042, 0.07, "alt", 0, 0.09, -0.26); cy(g, 0.036, 0.06, "alt", 0, 0.09, 0.09)
+	bx(g, 0.074, 0.074, 0.002, "soulglass", 0, 0.09, -0.296)
+	ring(g, 0.044, "soul", 0, 0.09, -0.22)
+	bx(g, 0.012, 0.04, 0.012, "metal", 0, 0.058, -0.14); bx(g, 0.012, 0.04, 0.012, "metal", 0, 0.058, 0.02)
+	bx(g, 0.06, 0.012, 0.012, "metal", 0.065, 0.02, 0.1, { sub = "bolt" })
+	bx(g, 0.028, 0.028, 0.028, "bone", 0.097, 0.02, 0.1, { sub = "bolt" })
+	g.mag = bx(g, 0.04, 0.07, 0.09, "poly", 0, -0.06, -0.05, { sub = "mag" })
+	bx(g, 0.036, 0.1, 0.045, "poly", 0, -0.08, 0.1, { rot = CFrame.Angles(-0.3, 0, 0) })
+	bx(g, 0.055, 0.09, 0.28, "alt", 0, -0.02, 0.3); bx(g, 0.05, 0.02, 0.14, "poly", 0, 0.035, 0.28)
+	bx(g, 0.057, 0.02, 0.2, "soul", 0, -0.04, 0.3)
+	g.boltPivot = CFrame.new(0.035 * S, 0.02 * S, 0.1 * S)
+	return { sightY = 0.09, rail = { 0, 0.04, -0.26 }, muzzleY = 0.012, muzzleZ = -1.07, underY = -0.04, underZ = -0.42, gripZ = 0.1, foreZ = -0.36, foreY = -0.04, hip = V3(0.18, -0.18, -0.5), adsZ = -0.3 }
+end
+
+-- Vampire's Fang: a blood-red combat shotgun with fangs at the muzzle and its own holo sight
+function B.fang(g)
+	bx(g, 0.066, 0.08, 0.34, "metal", 0, 0, -0.04)
+	cy(g, 0.019, 0.5, "poly", 0, 0.016, -0.46)
+	g.mag = cy(g, 0.015, 0.4, "metal", 0, -0.024, -0.4)
+	g.tube = true
+	local pump = bx(g, 0.06, 0.054, 0.17, "alt", 0, -0.024, -0.36, { sub = "pump" })
+	for i = 0, 4 do bx(g, 0.062, 0.006, 0.01, "blood", 0, 0.022, -0.06 + i * 0.03, { parent = pump }) end
+	-- fangs hanging from the muzzle
+	cy(g, 0.026, 0.05, "metal", 0, 0.016, -0.72)
+	for _, x in ipairs({ -0.014, 0.014 }) do bx(g, 0.008, 0.05, 0.008, "fang", x, -0.022, -0.735, { rot = CFrame.Angles(0.15, 0, 0) }) end
+	bx(g, 0.07, 0.012, 0.3, "blood", 0, -0.04, -0.04)
+	-- holo sight: frame, glass and a red ring dot
+	bx(g, 0.05, 0.008, 0.08, "metal", 0, 0.046, -0.06)
+	bx(g, 0.006, 0.044, 0.012, "metal", -0.024, 0.07, -0.09); bx(g, 0.006, 0.044, 0.012, "metal", 0.024, 0.07, -0.09)
+	bx(g, 0.054, 0.006, 0.012, "metal", 0, 0.094, -0.09)
+	bx(g, 0.042, 0.038, 0.001, "glass", 0, 0.071, -0.09)
+	bx(g, 0.005, 0.005, 0.001, "blood", 0, 0.071, -0.0915)
+	bx(g, 0.036, 0.1, 0.045, "alt", 0, -0.08, 0.1, { rot = CFrame.Angles(-0.35, 0, 0) })
+	bx(g, 0.054, 0.08, 0.26, "poly", 0, -0.02, 0.24)
+	bx(g, 0.056, 0.016, 0.1, "accent", 0, 0.03, 0.3)
+	return { sightY = 0.071, rail = { 0, 0.05, -0.06 }, muzzleY = 0.016, muzzleZ = -0.76, underY = -0.05, underZ = -0.46, gripZ = 0.1, foreZ = -0.36, foreY = -0.05, hip = V3(0.17, -0.18, -0.52), adsZ = -0.5 }
+end
+
 -- a key that changes whenever the gun needs rebuilding
 function Viewmodels.signature(id, prof)
-	local t = { (prof.skin and prof.skin[id]) or "stock" }
+	local t = { Stats.weaponSkin(prof, id) }
 	for _, a in ipairs(Config.AttachmentOrder) do if Stats.attOn(prof, id, a) then table.insert(t, a) end end
 	return table.concat(t, ",")
 end
 
-function Viewmodels.build(id, prof)
+-- opts (optional): skin = preview a specific skin, noArms = leave the hands out (skin studio turntable)
+function Viewmodels.build(id, prof, opts)
+	opts = opts or {}
 	local def = Config.WeaponById[id]
 	local on = {}
 	for _, a in ipairs(Config.AttachmentOrder) do on[a] = Stats.attOn(prof, id, a) end
-	local skin = (prof.skin and prof.skin[id]) or "stock"
-	if not (prof.skins and prof.skins[skin]) then skin = "stock" end
+	-- event guns carry their own optics
+	if def.scope and def.event then on.reddot = false end
+	if def.builtinSight then on.reddot = false end
+	local skin = opts.skin or Stats.weaponSkin(prof, id)
 	local g = newGun(def, skin)
+	g.noArms = opts.noArms
 	g.silenced = on.silencer
 	g.reddot = on.reddot
 	g.laser = on.laser

@@ -108,6 +108,22 @@ Create these in Studio and paste in each file's contents. The names must match e
 - Kill feed with multi-kill callouts, boss bar and wave banners.
 - Controller aim slowdown over targets.
 
+**The grind loop** (all saved)
+- **Prestige:** at level 30 you can reset to level 1 for a permanent +10% coins and XP per prestige, up to 10 times. Prestiges 1, 3 and 5 award exclusive finishes, and every prestige pays coins. Weapons, skins and upgrades are kept.
+- **Event pass:** 40 tiers filled by every point of XP you earn. Each tier pays coins, XP or candy corn, and tier 40 unlocks the Breach Elite finish.
+- **Daily login streak:** consecutive days climb a 7-day reward ladder. Missing a day starts it again.
+- These sit on top of levels, quests, daily challenges, weapon upgrades and boss drops, so each run moves several bars at once. Track them in the **Progress** tab.
+
+**Halloween event: Night of Terror** (October to 7 November UTC; set `Config.Halloween.Force` to `true` or `false` to override)
+- Pick **Night of Terror** on the Play tab. The map turns to a blood-moon night with purple fog, glowing jack-o'-lanterns, gravestones and dead trees.
+- Monsters replace the bots: skeleton archers firing bone arrows, zombies, vampire bats, ghosts, witches, pumpkin bombers, gravedigger brutes and coffin keepers with shield-like lids.
+- **Dracula** is the boss every fifth wave. He fires blood-bolt fans, lunges with a claw that heals him, summons bats and zombies, turns to mist and reappears behind you (phase two), and rains blood and drains your life (phase three).
+- **Candy corn:** monsters drop it, Dracula drops a pile, and seven Trick-or-Treat quests pay it.
+- **30 Halloween skins**, three per gun including the event guns, bought with candy corn. Materials such as cracked lava, glass and force field give each one its own pattern.
+- **Skin Studio** tab: a 360° ViewportFrame turntable. Drag to spin, scroll to zoom, preview any skin, then buy or equip it.
+- **Reaper's Eye** (sniper, from the Reaper's Contract quest line) has a built-in Soulglass scope and **Fever**: kills within 5 seconds of each other stack +12% damage (up to 10) and refund a round. The streak fades after 5 seconds without a kill.
+- **Vampire's Fang** (shotgun, dropped by Dracula: about 1 in 3, guaranteed by your third kill) has a built-in holo sight, **lifesteal** (12% of damage dealt) and +25% damage below half health.
+
 **Server-authoritative**
 - The server checks fire rate, ammo, grenades and killstreak counts, resolves all hits, and owns the economy. Clients can't give themselves damage, coins or ammo.
 

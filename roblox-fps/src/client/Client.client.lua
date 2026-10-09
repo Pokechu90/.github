@@ -104,10 +104,10 @@ hud = Hud.new({
 		local ok, res = pcall(function() return Remotes.Leaderboard:InvokeServer(m, d) end)
 		return ok and res or nil
 	end,
-	deploy = function(m, d)
+	deploy = function(m, d, mode)
 		input.fire, G.fireQueued = false, false
 		hud:closeAll()
-		Remotes.Deploy:FireServer(m, d)
+		Remotes.Deploy:FireServer(m, d, mode)
 	end,
 	applySettings = applySettings,
 	saveSettings = function(s) applySettings(s); Remotes.SaveSettings:FireServer(s) end,
@@ -733,11 +733,17 @@ local function animateWorld(dt)
 				local h1, h2 = r:FindFirstChild("Hip1"), r:FindFirstChild("Hip2")
 				if h1 then h1.Transform = CFrame.Angles(sw, 0, 0) end
 				if h2 then h2.Transform = CFrame.Angles(-sw, 0, 0) end
-				if kind == "runner" or kind == "exploder" then
+				if kind == "runner" or kind == "exploder" or kind == "h_pumpkin" then
 					local t = m:FindFirstChild("Torso")
 					local s1, s2 = t and t:FindFirstChild("Shoulder1"), t and t:FindFirstChild("Shoulder2")
 					if s1 then s1.Transform = CFrame.Angles(-sw * 1.3, 0, 0) end
 					if s2 then s2.Transform = CFrame.Angles(sw * 1.3, 0, 0) end
+				elseif kind == "h_zombie" then
+					-- arms stay reaching forward and claw out of step with the shamble
+					local t = m:FindFirstChild("Torso")
+					local s1, s2 = t and t:FindFirstChild("Shoulder1"), t and t:FindFirstChild("Shoulder2")
+					if s1 then s1.Transform = CFrame.Angles(sw * 0.35, 0, math.sin(ph * 0.5) * 0.12) end
+					if s2 then s2.Transform = CFrame.Angles(-sw * 0.35, 0, -math.sin(ph * 0.5) * 0.12) end
 				end
 			end
 		end
@@ -904,6 +910,7 @@ Remotes.FX.OnClientEvent:Connect(function(kind, ...)
 	elseif kind == "charge" then Effects.sound("laser", a[1], { pitch = 0.35, volume = 0.5 })
 	elseif kind == "slash" then Effects.sound("slash", a[1])
 	elseif kind == "coins" then Effects.coins(a[1], a[2], a[3])
+	elseif kind == "candy" then Effects.candy(a[1], a[2])
 	elseif kind == "crateRoll" then Effects.crateRoll(a[1], a[2])
 	elseif kind == "forge" then
 		Effects.forge(a[1], a[3])
@@ -1005,11 +1012,13 @@ RunService:BindToRenderStep("FoundryBreach", Enum.RenderPriority.Camera.Value + 
 			running = State:GetAttribute("Running"), active = State:GetAttribute("Active"), wave = State:GetAttribute("Wave") or 0,
 			hostiles = State:GetAttribute("Hostiles") or 0, inter = State:GetAttribute("Intermission") or 0, mutator = (mut and mut ~= "") and mut or nil,
 			ready = rs.ready, boss = boss, fps = fps,
+			hasFever = rs.slots ~= nil and table.find(rs.slots, "reaper") ~= nil, fever = rs.fever, feverT = rs.feverT, night = rs.mode == "halloween",
 			gap = gap, showCross = playing and G.ads < 0.5 and VM.sprint < 0.5 and G.inspectT <= 0, scoped = scoped,
 			hurt = hurtA, flash = flashA, radar = radarList(), root = root and root.Position, yaw = yaw,
 		})
 		-- the server's combo timer only arrives with snapshots; count it down between them
 		if rs.comboT and rs.comboT > 0 then rs.comboT = math.max(0, rs.comboT - dt) end
+		if rs.feverT and rs.feverT > 0 then rs.feverT = math.max(0, rs.feverT - dt) end
 		if rs.powerups then for k, v in pairs(rs.powerups) do if v > 0 then rs.powerups[k] = math.max(0, v - dt) end end end
 	end
 	if playing and w and not overlay then

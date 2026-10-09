@@ -4,9 +4,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage:WaitForChild("FoundryShared")
 local Config = require(Shared:WaitForChild("Config"))
 local Stats = require(Shared:WaitForChild("Stats"))
+local Viewmodels = require(script.Parent:WaitForChild("Viewmodels"))
+local CANDY = Color3.fromRGB(255, 178, 56)
 
 local C = Config.Colors
 local DISPLAY = Enum.Font.Michroma
@@ -78,9 +82,21 @@ local function fmt(n)
 end
 Hud.fmt = fmt
 
+-- every skin that can go on a weapon: its own Halloween finishes first, then the standard collection
+function Hud.skinsFor(prof, id: string)
+	local out = {}
+	local active = Stats.halloweenActive()
+	for _, k in ipairs(Config.HSkinOrder) do
+		local sk = Config.Skins[k]
+		if sk.only == id and (active or (prof.skins and prof.skins[k]) or (Config.WeaponById[id].defaultSkin == k)) then table.insert(out, k) end
+	end
+	for _, k in ipairs(Config.SkinOrder) do table.insert(out, k) end
+	return out
+end
+
 ---------------------------------------------------------------- HUD
 function Hud.new(ctx)
-	local self: any = { open = nil, menuTab = "play", armorySel = "rifle", mapSel = "yard", diffSel = "normal", feed = {}, toasts = {} }
+	local self: any = { open = nil, menuTab = "play", armorySel = "rifle", mapSel = "yard", diffSel = "normal", modeSel = "standard", studioSel = nil, studioSkin = nil, feed = {}, toasts = {} }
 	local player = Players.LocalPlayer
 	local gui = new("ScreenGui", { Name = "FoundryHUD", IgnoreGuiInset = true, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 5 }, player:WaitForChild("PlayerGui"))
 	self.gui = gui
@@ -182,6 +198,11 @@ function Hud.new(ctx)
 	local streakPanel = panel(hudRoot, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -176), Size = UDim2.fromOffset(200, 22), BackgroundTransparency = 0.45 })
 	local streakFill = bar(streakPanel, C.Danger, { Position = UDim2.new(0, 6, 1, -6), Size = UDim2.new(1, -12, 0, 3) })
 	local streakText = text(streakPanel, "STREAK 0", 10, { Font = MONO, Position = UDim2.fromOffset(8, 0), Size = UDim2.new(1, -16, 0, 16), TextColor3 = C.Muted })
+
+	-- Fever meter (Reaper's Eye)
+	local feverPanel = panel(hudRoot, { AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -204), Size = UDim2.fromOffset(200, 24), BackgroundTransparency = 0.35, BackgroundColor3 = RGB(16, 30, 18), Visible = false })
+	local feverFill = bar(feverPanel, RGB(154, 255, 106), { Position = UDim2.new(0, 6, 1, -6), Size = UDim2.new(1, -12, 0, 3) })
+	local feverText = text(feverPanel, "FEVER 0", 10, { Font = MONO, Position = UDim2.fromOffset(8, 1), Size = UDim2.new(1, -16, 0, 16), TextColor3 = RGB(154, 255, 106) })
 
 	-- score and multipliers (top left)
 	local sp = panel(hudRoot, { Position = UDim2.fromOffset(22, 22), Size = UDim2.fromOffset(300, 132) })
@@ -406,7 +427,15 @@ function Hud.new(ctx)
 		local combo = s.combo or 0
 		comboText.Text = combo >= 2 and string.format("%d KILL COMBO", combo) or ""
 		comboFill.Size = UDim2.fromScale(combo >= 1 and math.clamp((s.comboT or 0) / Config.ComboWindow, 0, 1) or 0, 1)
-		coinText.Text = "◉ " .. fmt(prof.coins or 0)
+		coinText.RichText = true
+		coinText.Text = "◉ " .. fmt(prof.coins or 0) .. ((s.night or Stats.halloweenActive()) and string.format("  <font color=\"#ffb238\">▼ %s</font>", fmt(prof.candy or 0)) or "")
+		feverPanel.Visible = s.hasFever == true
+		if s.hasFever then
+			local F = Config.Halloween.Fever
+			local f = s.fever or 0
+			feverText.Text = string.format("FEVER %d/%d  ·  +%d%% DMG", f, F.max, math.floor(f * F.per * 100 + 0.5))
+			feverFill.Size = UDim2.fromScale(f > 0 and math.clamp((s.feverT or 0) / F.window, 0, 1) or 0, 1)
+		end
 		levelText.Text = "LV " .. (prof.level or 1)
 		xpFill.Size = UDim2.fromScale(math.clamp((prof.xp or 0) / Stats.xpForLevel(prof.level or 1), 0, 1), 1)
 		fpsText.Visible = settings.fpsCounter == true
@@ -526,6 +555,7 @@ function Hud.new(ctx)
 	end
 	function self:closeAll()
 		for _, s in pairs(screens) do s.Visible = false end
+		if self.stopStudio then self.stopStudio() end
 		self.open = nil
 		GuiService.SelectedObject = nil
 	end
@@ -547,8 +577,8 @@ function Hud.new(ctx)
 	local closeBtn = button(menuSheet, "RESUME", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(120, 34), Visible = false }, function() self:closeAll() end)
 	local tabButtons = {}
 	local renderTab
-	for i, t in ipairs({ { "play", "PLAY" }, { "armory", "ARMORY" }, { "quests", "QUESTS" }, { "settings", "SETTINGS" } }) do
-		tabButtons[t[1]] = button(tabs, t[2], { LayoutOrder = i, Size = UDim2.fromOffset(130, 34) }, function() self.menuTab = t[1]; renderTab() end)
+	for i, t in ipairs({ { "play", "PLAY" }, { "armory", "ARMORY" }, { "studio", "SKIN STUDIO" }, { "grind", "PROGRESS" }, { "quests", "QUESTS" }, { "settings", "SETTINGS" } }) do
+		tabButtons[t[1]] = button(tabs, t[2], { LayoutOrder = i, Size = UDim2.fromOffset(t[1] == "studio" and 150 or 124, 34) }, function() self.menuTab = t[1]; renderTab() end)
 	end
 
 	local function statRow(parent, label, value, frac, order)
@@ -595,7 +625,7 @@ function Hud.new(ctx)
 		vlist(left, 8)
 		text(left, running and ("A run is in progress on " .. Config.MapById[ctx.state("Map") or "yard"].name .. " · wave " .. (ctx.state("Wave") or 0)) or "SELECT A SITE", 13, { Font = BOLD, LayoutOrder = 1, TextColor3 = running and C.Accent or C.Muted })
 		local maps = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 132), LayoutOrder = 2 }, left)
-		new("UIGridLayout", { CellSize = UDim2.fromOffset(124, 62), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder }, maps)
+		new("UIGridLayout", { CellSize = Stats.halloweenActive() and UDim2.fromOffset(124, 56) or UDim2.fromOffset(124, 62), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder }, maps)
 		for i, m in ipairs(Config.Maps) do
 			local unlocked = Stats.mapUnlocked(prof, m.id)
 			local sel = self.mapSel == m.id
@@ -624,10 +654,27 @@ function Hud.new(ctx)
 			text(b, d.label, 13, { Font = BOLD, Position = UDim2.fromOffset(8, 6), Size = UDim2.new(1, -16, 0, 16) })
 			text(b, d.desc, 10, { Position = UDim2.fromOffset(8, 26), Size = UDim2.new(1, -16, 0, 28), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = C.Muted })
 		end
+		if Stats.halloweenActive() then
+			text(left, "MODE", 13, { Font = BOLD, LayoutOrder = 5, TextColor3 = C.Muted })
+			local modes = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 62), LayoutOrder = 6 }, left)
+			hlist(modes, 8)
+			for i, m in ipairs({ { "standard", "Standard", "Rogue machines and their war machines." }, { "halloween", "🎃 Night of Terror", "Skeletons, zombies, witches and Dracula. Earn candy corn." } }) do
+				local sel = self.modeSel == m[1]
+				local tint = m[1] == "halloween" and RGB(255, 120, 30) or C.Accent
+				local b = button(modes, "", { LayoutOrder = i, Size = UDim2.fromOffset(310, 60), BackgroundColor3 = sel and C.Panel2:Lerp(tint, 0.3) or C.Panel2 }, function()
+					if running then return end
+					self.modeSel = m[1]
+					ctx.shop({ type = "prefs", mode = m[1] })
+					renderTab()
+				end)
+				text(b, m[2], 13, { Font = BOLD, Position = UDim2.fromOffset(8, 6), Size = UDim2.new(1, -16, 0, 16), TextColor3 = m[1] == "halloween" and CANDY or C.Text })
+				text(b, m[3], 10, { Position = UDim2.fromOffset(8, 26), Size = UDim2.new(1, -16, 0, 28), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = C.Muted })
+			end
+		end
 		local lo = prof.loadout or {}
-		text(left, string.format("Loadout: %s + %s   ·   change it in the Armory", Config.WeaponById[lo.primary or "rifle"].name, Config.WeaponById[lo.secondary or "pistol"].name), 12, { LayoutOrder = 5, TextColor3 = C.Muted })
-		button(left, running and "JOIN RUN" or "DEPLOY", { LayoutOrder = 6, Size = UDim2.fromOffset(260, 48), TextSize = 18, Font = DISPLAY }, function() ctx.deploy(self.mapSel, self.diffSel) end, true)
-		text(left, "WASD move · Shift sprint · C crouch/slide · Space jump/mantle · RMB aim · R reload · Q swap · G frag · T stun · Z airstrike · X turret · E use · F inspect · M menu", 11, { LayoutOrder = 7, TextWrapped = true, Size = UDim2.new(1, 0, 0, 30), TextColor3 = C.Muted })
+		text(left, string.format("Loadout: %s + %s   ·   change it in the Armory", Config.WeaponById[lo.primary or "rifle"].name, Config.WeaponById[lo.secondary or "pistol"].name), 12, { LayoutOrder = 8, TextColor3 = C.Muted })
+		button(left, running and "JOIN RUN" or "DEPLOY", { LayoutOrder = 9, Size = UDim2.fromOffset(260, 48), TextSize = 18, Font = DISPLAY }, function() ctx.deploy(self.mapSel, self.diffSel, self.modeSel) end, true)
+		text(left, "WASD move · Shift sprint · C crouch/slide · Space jump/mantle · RMB aim · R reload · Q swap · G frag · T stun · Z airstrike · X turret · E use · F inspect · M menu", 11, { LayoutOrder = 10, TextWrapped = true, Size = UDim2.new(1, 0, 0, 30), TextColor3 = C.Muted })
 		local right = panel(body, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.36, 0, 1, -4), BackgroundColor3 = C.Panel2 })
 		pad(right, 12, 10)
 		vlist(right, 3)
@@ -639,12 +686,13 @@ function Hud.new(ctx)
 		vlist(list, 6)
 		for i, w in ipairs(Config.Weapons) do
 			local owned = prof.weapons and prof.weapons[w.id]
+			if w.event and not owned and not Stats.halloweenActive() then continue end
 			local b = button(list, "", { LayoutOrder = i, Size = UDim2.new(1, -8, 0, 44), BackgroundColor3 = self.armorySel == w.id and C.Panel2:Lerp(C.Accent, 0.25) or C.Panel2 }, function() self.armorySel = w.id; renderTab() end)
-			text(b, w.name, 13, { Font = BOLD, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 18) })
-			local tag = owned and ((prof.loadout.primary == w.id and "PRIMARY") or (prof.loadout.secondary == w.id and "SECONDARY") or w.cls) or (prof.level >= w.level and (fmt(w.price) .. " coins") or ("Level " .. w.level))
-			text(b, tag, 10, { Position = UDim2.fromOffset(10, 24), Size = UDim2.new(1, -20, 0, 14), TextColor3 = owned and C.Muted or C.Coin })
+			text(b, (w.event and "🎃 " or "") .. w.name, 13, { Font = BOLD, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 18) })
+			local tag = owned and ((prof.loadout.primary == w.id and "PRIMARY") or (prof.loadout.secondary == w.id and "SECONDARY") or w.cls) or (w.event and "Halloween event" or (prof.level >= w.level and (fmt(w.price) .. " coins") or ("Level " .. w.level)))
+			text(b, tag, 10, { Position = UDim2.fromOffset(10, 24), Size = UDim2.new(1, -20, 0, 14), TextColor3 = owned and C.Muted or (w.event and CANDY or C.Coin) })
 		end
-		local w = Config.WeaponById[self.armorySel]
+		local w = Config.WeaponById[self.armorySel] or Config.WeaponById.rifle
 		local owned = prof.weapons and prof.weapons[w.id]
 		local s = Stats.weapon(w.id, prof, nil)
 		local detail = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(244, 0), Size = UDim2.new(1, -244, 1, 0), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4 }, body)
@@ -662,8 +710,24 @@ function Hud.new(ctx)
 		if owned then
 			button(actions, prof.loadout.primary == w.id and "PRIMARY ✓" or "SET PRIMARY", { Size = UDim2.fromOffset(150, 34) }, function() shopReq({ type = "loadout", slot = "primary", id = w.id }) end, prof.loadout.primary ~= w.id)
 			button(actions, prof.loadout.secondary == w.id and "SECONDARY ✓" or "SET SECONDARY", { Size = UDim2.fromOffset(160, 34) }, function() shopReq({ type = "loadout", slot = "secondary", id = w.id }) end)
+		elseif w.event then
+			local how
+			if w.id == "reaper" then
+				local c = prof.contract or {}
+				local parts = {}
+				for _, st in ipairs(Config.Halloween.Contract) do table.insert(parts, string.format("%s %d/%d", st.id, math.min(c[st.id] or 0, st.goal), st.goal)) end
+				how = "Complete the Reaper's Contract in Night of Terror: " .. table.concat(parts, " · ")
+			else
+				how = string.format("Drops from Dracula in Night of Terror (about 1 in 3, guaranteed by your %s win · %d so far)", "third", prof.fangPity or 0)
+			end
+			text(actions, how, 11, { Size = UDim2.new(1, -170, 1, 0), TextWrapped = true, TextColor3 = CANDY })
 		else
 			button(actions, prof.level >= w.level and ("UNLOCK · " .. fmt(w.price)) or ("REQUIRES LEVEL " .. w.level), { Size = UDim2.fromOffset(240, 34) }, function() shopReq({ type = "buyWeapon", id = w.id }) end, prof.level >= w.level)
+		end
+		button(actions, "SKIN STUDIO ↻", { Size = UDim2.fromOffset(150, 34) }, function() self.studioSel = w.id; self.studioSkin = nil; self.menuTab = "studio"; renderTab() end)
+		if w.perks then
+			text(detail, "PERKS", 12, { Font = BOLD, LayoutOrder = 16, TextColor3 = C.Muted })
+			text(detail, "✦ " .. table.concat(w.perks, "\n✦ "), 11, { LayoutOrder = 17, TextColor3 = CANDY, TextWrapped = true, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 		end
 		if owned then
 			text(detail, "UPGRADES", 12, { Font = BOLD, LayoutOrder = 10, TextColor3 = C.Muted })
@@ -680,6 +744,7 @@ function Hud.new(ctx)
 			end
 			text(detail, "ATTACHMENTS", 12, { Font = BOLD, LayoutOrder = 20, TextColor3 = C.Muted })
 			for i, a in ipairs(Config.AttachmentOrder) do
+				if w.event and a == "reddot" then continue end
 				local def = Config.Attachments[a]
 				local has = Stats.attOwned(prof, w.id, a)
 				local on = Stats.attOn(prof, w.id, a)
@@ -691,14 +756,17 @@ function Hud.new(ctx)
 				end, has and on)
 			end
 			text(detail, "SKINS", 12, { Font = BOLD, LayoutOrder = 30, TextColor3 = C.Muted })
-			local skins = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 66), LayoutOrder = 31 }, detail)
-			new("UIGridLayout", { CellSize = UDim2.fromOffset(110, 30), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, skins)
-			for i, k in ipairs(Config.SkinOrder) do
+			local skins = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 31 }, detail)
+			new("UIGridLayout", { CellSize = UDim2.fromOffset(122, 30), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, skins)
+			local current = Stats.weaponSkin(prof, w.id)
+			for i, k in ipairs(Hud.skinsFor(prof, w.id)) do
 				local sk = Config.Skins[k]
-				local unlocked = prof.skins and prof.skins[k]
-				local active = ((prof.skin and prof.skin[w.id]) or "stock") == k
-				local b = button(skins, unlocked and sk.name or "🔒 " .. sk.name, { LayoutOrder = i, TextSize = 11, BackgroundColor3 = sk.metal:Lerp(C.Panel2, 0.4), TextColor3 = active and C.Accent or (unlocked and C.Text or C.Muted) }, function()
-					if unlocked then shopReq({ type = "skin", id = w.id, skin = k }) else self:toast(sk.name .. " is locked", sk.how, "deny") end
+				local unlocked = (prof.skins and prof.skins[k]) or w.defaultSkin == k
+				local label = unlocked and sk.name or (sk.candy and sk.candy > 0 and ("▼" .. sk.candy .. " " .. sk.name) or ("🔒 " .. sk.name))
+				local b = button(skins, label, { LayoutOrder = i, TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd, BackgroundColor3 = sk.metal:Lerp(C.Panel2, 0.4), TextColor3 = current == k and C.Accent or (unlocked and C.Text or (sk.candy and CANDY or C.Muted)) }, function()
+					if unlocked then shopReq({ type = "skin", id = w.id, skin = k })
+					elseif sk.candy and sk.candy > 0 then shopReq({ type = "buySkin", id = w.id, skin = k })
+					else self:toast(sk.name .. " is locked", sk.how, "deny") end
 				end)
 				new("Frame", { BackgroundColor3 = sk.accent, BorderSizePixel = 0, Size = UDim2.new(0, 4, 1, 0) }, b)
 			end
@@ -809,6 +877,190 @@ function Hud.new(ctx)
 		end, true)
 	end
 
+	---------------------------------------------------------------- skin studio: a 360° turntable for any gun in any skin
+	local studioConns = {}
+	local function stopStudio()
+		for _, c in ipairs(studioConns) do c:Disconnect() end
+		table.clear(studioConns)
+	end
+	local function renderStudio(prof)
+		local sel = self.studioSel
+		local sw = sel and Config.WeaponById[sel]
+		if not sw or (sw.event and not (prof.weapons and prof.weapons[sel]) and not Stats.halloweenActive()) then sel = (prof.loadout and prof.loadout.primary) or "rifle"; self.studioSel = sel end
+		local w = Config.WeaponById[sel]
+		local owned = prof.weapons and prof.weapons[sel]
+		local list = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.new(0, 200, 1, 0), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4 }, body)
+		vlist(list, 6)
+		for i, x in ipairs(Config.Weapons) do
+			local has = prof.weapons and prof.weapons[x.id]
+			if x.event and not has and not Stats.halloweenActive() then continue end
+			local b = button(list, "", { LayoutOrder = i, Size = UDim2.new(1, -8, 0, 42), BackgroundColor3 = sel == x.id and C.Panel2:Lerp(C.Accent, 0.25) or C.Panel2 }, function()
+				self.studioSel = x.id; self.studioSkin = nil; renderTab()
+			end)
+			text(b, (x.event and "🎃 " or "") .. x.name, 12, { Font = BOLD, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 16) })
+			text(b, Config.Skins[Stats.weaponSkin(prof, x.id)].name .. (has and "" or "  ·  not owned"), 10, { Position = UDim2.fromOffset(10, 22), Size = UDim2.new(1, -20, 0, 14), TextColor3 = C.Muted })
+		end
+
+		-- the turntable
+		local skin = self.studioSkin or Stats.weaponSkin(prof, sel)
+		local vp = new("ViewportFrame", { BackgroundColor3 = RGB(22, 16, 30), Position = UDim2.fromOffset(212, 0), Size = UDim2.new(1, -526, 1, 0), Ambient = RGB(140, 132, 160), LightColor = RGB(255, 236, 214), LightDirection = Vector3.new(-0.6, -1, -0.4) }, body)
+		corner(vp, 8)
+		stroke(vp)
+		local wm = new("WorldModel", {}, vp)
+		local cam = new("Camera", { FieldOfView = 28 }, vp)
+		vp.CurrentCamera = cam
+		local g = Viewmodels.build(sel, prof, { skin = skin, noArms = true })
+		g.model.Parent = wm
+		Viewmodels.place(g, CFrame.identity, {})
+		local box, size = g.model:GetBoundingBox()
+		local centre = box.Position
+		local dist = (math.max(size.X, size.Y, size.Z) * 0.5) / math.tan(math.rad(14)) * 1.15
+		local yaw, pitch, zoom, spin, drag = -0.7, 0.2, 1, true, nil
+		local sk = Config.Skins[skin]
+		text(vp, w.name, 16, { Font = DISPLAY, Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 20) })
+		text(vp, sk.name .. (sk.event and "  ·  Halloween" or "") .. (owned and "" or "  ·  weapon not owned yet"), 11, { Position = UDim2.fromOffset(14, 32), Size = UDim2.new(1, -28, 0, 14), TextColor3 = sk.event and CANDY or C.Muted })
+		local spinBtn
+		spinBtn = button(vp, "AUTO-SPIN ON", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.fromOffset(150, 26), TextSize = 11 }, function()
+			spin = not spin
+			spinBtn.Text = spin and "AUTO-SPIN ON" or "AUTO-SPIN OFF"
+		end)
+		text(vp, "Drag to rotate · scroll to zoom", 10, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -40), Size = UDim2.fromOffset(240, 14), TextXAlignment = Enum.TextXAlignment.Center, TextColor3 = C.Muted })
+		stopStudio()
+		table.insert(studioConns, vp.InputBegan:Connect(function(io)
+			if io.UserInputType == Enum.UserInputType.MouseButton1 or io.UserInputType == Enum.UserInputType.Touch then drag = io.Position end
+		end))
+		table.insert(studioConns, UserInputService.InputChanged:Connect(function(io)
+			if drag and (io.UserInputType == Enum.UserInputType.MouseMovement or io.UserInputType == Enum.UserInputType.Touch) then
+				local d = io.Position - drag
+				drag = io.Position
+				yaw += d.X * 0.012
+				pitch = math.clamp(pitch + d.Y * 0.008, -1, 1)
+			end
+		end))
+		table.insert(studioConns, UserInputService.InputEnded:Connect(function(io)
+			if io.UserInputType == Enum.UserInputType.MouseButton1 or io.UserInputType == Enum.UserInputType.Touch then drag = nil end
+		end))
+		table.insert(studioConns, vp.InputChanged:Connect(function(io)
+			if io.UserInputType == Enum.UserInputType.MouseWheel then zoom = math.clamp(zoom * (1 - io.Position.Z * 0.1), 0.5, 1.8) end
+		end))
+		table.insert(studioConns, RunService.RenderStepped:Connect(function(dt)
+			if not vp.Parent then stopStudio(); return end
+			if spin and not drag then yaw += dt * 0.6 end
+			-- spin the gun itself so the light sweeps across the finish
+			Viewmodels.place(g, CFrame.Angles(pitch, yaw, 0) * CFrame.new(-centre), {})
+			cam.CFrame = CFrame.new(0, 0, dist * zoom)
+		end))
+
+		-- skins for this gun
+		local right = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 302, 1, 0), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4 }, body)
+		vlist(right, 6)
+		text(right, string.format("◉ %s     <font color=\"#ffb238\">▼ %s candy corn</font>", fmt(prof.coins or 0), fmt(prof.candy or 0)), 12, { Font = MONO, RichText = true, LayoutOrder = 0, TextColor3 = C.Coin })
+		local current = Stats.weaponSkin(prof, sel)
+		for i, k in ipairs(Hud.skinsFor(prof, sel)) do
+			local x = Config.Skins[k]
+			local has = (prof.skins and prof.skins[k]) or w.defaultSkin == k
+			local row = button(right, "", { LayoutOrder = i, Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = skin == k and C.Panel2:Lerp(Color3.new(1, 1, 1), 0.1) or C.Panel2 }, function()
+				self.studioSkin = k; renderTab()
+			end)
+			if current == k then stroke(row, C.Accent, 0) end
+			local sw2 = new("Frame", { BackgroundColor3 = x.poly, BorderSizePixel = 0, Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(40, 30) }, row)
+			corner(sw2, 5)
+			new("Frame", { BackgroundColor3 = x.metal, BorderSizePixel = 0, Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.5, 1) }, sw2)
+			new("Frame", { BackgroundColor3 = x.accent, BorderSizePixel = 0, Position = UDim2.new(0, 0, 1, -6), Size = UDim2.new(1, 0, 0, 6) }, sw2)
+			text(row, x.name, 12, { Font = BOLD, Position = UDim2.fromOffset(56, 5), Size = UDim2.new(1, -150, 0, 16) })
+			text(row, x.event and "Halloween" or (x.glow and "glowing accents" or "standard finish"), 10, { Position = UDim2.fromOffset(56, 24), Size = UDim2.new(1, -150, 0, 14), TextColor3 = x.event and CANDY or C.Muted })
+			local act = { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0), Size = UDim2.fromOffset(86, 28), TextSize = 11 }
+			if has and owned then
+				if current == k then text(row, "EQUIPPED", 10, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(86, 14), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = C.Accent })
+				else button(row, "EQUIP", act, function() self.studioSkin = k; shopReq({ type = "skin", id = sel, skin = k }) end, true) end
+			elseif has then
+				text(row, "OWNED", 10, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(86, 14), TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = C.Muted })
+			elseif x.candy and x.candy > 0 then
+				act.BackgroundColor3 = (prof.candy or 0) >= x.candy and RGB(150, 70, 10) or C.Panel2
+				button(row, "▼ " .. x.candy, act, function() self.studioSkin = k; shopReq({ type = "buySkin", id = sel, skin = k }) end)
+			else
+				text(row, x.how, 10, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(92, 28), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Right, TextColor3 = C.Muted })
+			end
+		end
+	end
+
+	---------------------------------------------------------------- progress: the grind loop (prestige, event pass, login streak, Halloween)
+	local prestigeArm = 0
+	local function chip(parent, order, title, sub, on, tint)
+		local f = panel(parent, { LayoutOrder = order, BackgroundColor3 = on and C.Panel2:Lerp(tint or C.Accent, 0.35) or C.Panel2 })
+		text(f, title, 11, { Font = BOLD, Position = UDim2.fromOffset(8, 4), Size = UDim2.new(1, -16, 0, 14), TextColor3 = on and (tint or C.Accent) or C.Text })
+		text(f, sub, 10, { Position = UDim2.fromOffset(8, 20), Size = UDim2.new(1, -16, 0, 26), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = C.Muted })
+		return f
+	end
+	local function renderGrind(prof)
+		local sc = new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 4 }, body)
+		vlist(sc, 8)
+		local P = Config.Prestige
+		local pres = prof.prestige or 0
+		-- prestige
+		local pp = panel(sc, { LayoutOrder = 1, Size = UDim2.new(1, -8, 0, 96), BackgroundColor3 = C.Panel2 })
+		pad(pp, 12, 10)
+		text(pp, string.format("PRESTIGE %d / %d", pres, P.max), 16, { Font = DISPLAY, Size = UDim2.new(0.6, 0, 0, 20), TextColor3 = RGB(180, 140, 255) })
+		text(pp, string.format("+%d%% coins and XP on every run, forever", math.floor((Stats.prestigeMult(prof) - 1) * 100 + 0.5)), 12, { Position = UDim2.fromOffset(0, 24), Size = UDim2.new(0.6, 0, 0, 16), TextColor3 = C.Coin })
+		local nextR = P.rewards[pres + 1] or P.later
+		text(pp, pres >= P.max and "Maximum prestige reached." or string.format("Reach level %d, then reset to level 1 for another +%d%% and %s. Weapons, skins and upgrades stay.", P.level, math.floor(P.bonus * 100), Stats.rewardText(nextR)), 11, { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(0.66, 0, 0, 30), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextColor3 = C.Muted })
+		local lf = bar(pp, RGB(180, 140, 255), { Position = UDim2.new(0, 0, 1, -6), Size = UDim2.new(0.66, 0, 0, 5) })
+		lf.Size = UDim2.fromScale(math.clamp((prof.level or 1) / P.level, 0, 1), 1)
+		local ready = (prof.level or 1) >= P.level and pres < P.max and not ctx.deployed()
+		local armed = os.clock() - prestigeArm < 4
+		button(pp, ready and (armed and "CONFIRM PRESTIGE" or "PRESTIGE NOW") or string.format("LEVEL %d / %d", prof.level or 1, P.level), { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), Size = UDim2.fromOffset(220, 44), TextSize = 14 }, function()
+			if not ready then self:toast("Not yet", ctx.deployed() and "Finish your run first" or ("Reach level " .. P.level), "deny"); return end
+			if not armed then prestigeArm = os.clock(); renderTab(); return end
+			prestigeArm = 0
+			shopReq({ type = "prestige" })
+		end, ready)
+
+		-- event pass
+		local pass = prof.pass or { xp = 0, tier = 0 }
+		local tier = Stats.passTier(prof)
+		local into = (pass.xp or 0) - tier * Config.Pass.xpPerTier
+		local ep = panel(sc, { LayoutOrder = 2, Size = UDim2.new(1, -8, 0, 150), BackgroundColor3 = C.Panel2 })
+		pad(ep, 12, 10)
+		text(ep, string.format("EVENT PASS · TIER %d / %d", tier, Config.Pass.tiers), 16, { Font = DISPLAY, Size = UDim2.new(1, 0, 0, 20), TextColor3 = C.Accent })
+		text(ep, tier >= Config.Pass.tiers and "Pass complete. The Breach Elite finish is yours." or string.format("%s / %s XP to the next tier · every XP you earn counts", fmt(into), fmt(Config.Pass.xpPerTier)), 11, { Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, 0, 0, 14), TextColor3 = C.Muted })
+		local pf = bar(ep, C.Accent, { Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 6) })
+		pf.Size = UDim2.fromScale(tier >= Config.Pass.tiers and 1 or math.clamp(into / Config.Pass.xpPerTier, 0, 1), 1)
+		local track = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 60), Size = UDim2.new(1, 0, 0, 62) }, ep)
+		new("UIGridLayout", { CellSize = UDim2.new(1 / 7, -6, 0, 58), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, track)
+		local first = math.clamp(tier + 1, 1, Config.Pass.tiers - 6)
+		for t = first, first + 6 do
+			chip(track, t, "Tier " .. t, Stats.rewardText(Config.Pass.reward(t)), t <= tier)
+		end
+
+		-- daily login streak
+		local L = prof.login or { streak = 0, best = 0 }
+		local lp = panel(sc, { LayoutOrder = 3, Size = UDim2.new(1, -8, 0, 116), BackgroundColor3 = C.Panel2 })
+		pad(lp, 12, 10)
+		text(lp, string.format("DAILY LOGIN · DAY %d STREAK", L.streak or 0), 16, { Font = DISPLAY, Size = UDim2.new(1, 0, 0, 20), TextColor3 = C.Heal })
+		text(lp, string.format("Come back each day to climb the ladder. Best streak: %d days. Missing a day starts it again.", L.best or 0), 11, { Position = UDim2.fromOffset(0, 24), Size = UDim2.new(1, 0, 0, 14), TextColor3 = C.Muted })
+		local ladder = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 44), Size = UDim2.new(1, 0, 0, 56) }, lp)
+		new("UIGridLayout", { CellSize = UDim2.new(1 / 7, -6, 0, 52), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder }, ladder)
+		local today = ((L.streak or 1) - 1) % #Config.LoginRewards + 1
+		for d, r in ipairs(Config.LoginRewards) do chip(ladder, d, "Day " .. d, Stats.rewardText(r), d <= today and (L.streak or 0) > 0, C.Heal) end
+
+		-- Halloween: candy corn, the Reaper's Contract and Trick-or-Treat quests
+		local H = Config.Halloween
+		if Stats.halloweenActive() or (prof.candy or 0) > 0 then
+			text(sc, string.format("🎃 HALLOWEEN · ▼ %s CANDY CORN", fmt(prof.candy or 0)), 14, { Font = BOLD, LayoutOrder = 10, TextColor3 = CANDY })
+			local c = prof.contract or {}
+			text(sc, c.done and "Reaper's Contract · complete · Reaper's Eye unlocked" or "Reaper's Contract · finish every step in Night of Terror to earn Reaper's Eye", 12, { LayoutOrder = 11, TextColor3 = C.Muted })
+			for i, st in ipairs(H.Contract) do
+				questRow(sc, 11 + i, st.name, st.desc, c[st.id] or 0, st.goal, "Reaper's Eye", (c[st.id] or 0) >= st.goal)
+			end
+			text(sc, (prof.weapons and prof.weapons.fang) and "Vampire's Fang · owned" or string.format("Vampire's Fang · Dracula drop · guaranteed by your third Dracula kill (%d / %d)", math.min(prof.fangPity or 0, H.FangPity), H.FangPity), 12, { LayoutOrder = 20, TextColor3 = (prof.weapons and prof.weapons.fang) and C.Heal or C.Muted })
+			text(sc, "Trick or treat", 12, { Font = BOLD, LayoutOrder = 21, TextColor3 = C.Muted })
+			for i, q in ipairs(H.Quests) do
+				local st = (prof.hq and prof.hq[q.id]) or { p = 0, done = false }
+				questRow(sc, 21 + i, q.name, q.desc, st.p, q.goal, q.candy .. " candy corn", st.done)
+			end
+		end
+	end
+
 	function renderTab()
 		local prof = ctx.profile()
 		if not prof then return end
@@ -816,13 +1068,17 @@ function Hud.new(ctx)
 		for k, b in pairs(tabButtons) do b.TextColor3 = k == self.menuTab and C.Accent or C.Text end
 		tabButtons.play.Visible = not ctx.deployed()
 		if ctx.deployed() and self.menuTab == "play" then self.menuTab = "armory" end
-		profLine.Text = string.format("<font color=\"#b48cff\">LEVEL %d</font>   %s / %s XP     <font color=\"#ffd24a\">◉ %s coins</font>     best wave %d   ·   bosses %d   ·   kills %s", prof.level, fmt(prof.xp), fmt(Stats.xpForLevel(prof.level)), fmt(prof.coins), prof.stats.bestWave, prof.stats.bosses, fmt(prof.stats.kills))
+		profLine.Text = string.format("<font color=\"#b48cff\">%sLEVEL %d</font>   %s / %s XP     <font color=\"#ffd24a\">◉ %s coins</font>%s     best wave %d   ·   bosses %d   ·   kills %s", (prof.prestige or 0) > 0 and ("P" .. prof.prestige .. " · ") or "", prof.level, fmt(prof.xp), fmt(Stats.xpForLevel(prof.level)), fmt(prof.coins), (Stats.halloweenActive() or (prof.candy or 0) > 0) and string.format("   <font color=\"#ffb238\">▼ %s candy</font>", fmt(prof.candy or 0)) or "", prof.stats.bestWave, prof.stats.bosses, fmt(prof.stats.kills))
+		stopStudio()
 		if self.menuTab == "play" then renderPlay(prof)
 		elseif self.menuTab == "armory" then renderArmory(prof)
+		elseif self.menuTab == "studio" then renderStudio(prof)
+		elseif self.menuTab == "grind" then renderGrind(prof)
 		elseif self.menuTab == "quests" then renderQuests(prof)
 		else renderSettings(prof) end
 	end
 
+	self.stopStudio = stopStudio
 	function self:showMenu(inRun)
 		closeBtn.Visible = inRun == true
 		settingsDraft = nil
@@ -830,6 +1086,7 @@ function Hud.new(ctx)
 		if prof and not inRun then
 			if prof.map and Stats.mapUnlocked(prof, prof.map) then self.mapSel = prof.map end
 			if prof.difficulty and Config.Difficulty[prof.difficulty] then self.diffSel = prof.difficulty end
+			self.modeSel = (prof.mode == "halloween" and Stats.halloweenActive()) and "halloween" or "standard"
 			self.menuTab = "play"
 		end
 		show("menu")
@@ -891,11 +1148,11 @@ function Hud.new(ctx)
 	local overBoard = panel(overSheet, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 70), Size = UDim2.new(0.42, 0, 0, 380), BackgroundColor3 = C.Panel2 })
 	pad(overBoard, 12, 10)
 	vlist(overBoard, 3)
-	button(overSheet, "REDEPLOY", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.fromOffset(200, 42) }, function() self:closeAll(); ctx.deploy(self.mapSel, self.diffSel) end, true)
+	button(overSheet, "REDEPLOY", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.fromOffset(200, 42) }, function() self:closeAll(); ctx.deploy(self.mapSel, self.diffSel, self.modeSel) end, true)
 	button(overSheet, "MAIN MENU", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 212, 1, 0), Size = UDim2.fromOffset(160, 42) }, function() self:showMenu(false) end)
 	function self:showOver(s)
-		self.mapSel, self.diffSel = s.map or self.mapSel, s.diff or self.diffSel
-		overTitle.Text = "OVERRUN AT WAVE " .. s.wave
+		self.mapSel, self.diffSel, self.modeSel = s.map or self.mapSel, s.diff or self.diffSel, s.mode or self.modeSel
+		overTitle.Text = (s.mode == "halloween" and "THE NIGHT TOOK YOU AT WAVE " or "OVERRUN AT WAVE ") .. s.wave
 		overSub.Text = string.format("%s · %s · %dm %02ds%s", Config.MapById[s.map or "yard"].name, Config.Difficulty[s.diff or "normal"].label, s.time // 60, math.floor(s.time % 60), (s.rank and s.rank == 1) and "  ·  NEW PERSONAL BEST" or "")
 		clear(overGrid)
 		for i, kv in ipairs({ { "SCORE", fmt(s.score) }, { "KILLS", fmt(s.kills) }, { "HEADSHOTS", fmt(s.heads) }, { "ACCURACY", s.acc .. "%" }, { "BEST COMBO", tostring(s.bestCombo) }, { "COINS", "+" .. fmt(s.coins) }, { "XP", "+" .. fmt(s.xp) }, { "LEVELS", "+" .. s.levels } }) do
@@ -906,6 +1163,7 @@ function Hud.new(ctx)
 		clear(overExtra)
 		if #s.quests > 0 then text(overExtra, "Quests completed: " .. table.concat(s.quests, ", "), 12, { TextColor3 = C.Accent, TextWrapped = true, Size = UDim2.new(1, 0, 0, 34) }) end
 		if #s.drops > 0 then text(overExtra, "Rare drops: " .. table.concat(s.drops, ", "), 12, { TextColor3 = C.Coin, TextWrapped = true, Size = UDim2.new(1, 0, 0, 34) }) end
+		if (s.candy or 0) > 0 then text(overExtra, "Candy corn: +" .. fmt(s.candy), 12, { TextColor3 = CANDY, Size = UDim2.new(1, 0, 0, 18) }) end
 		renderBoard(overBoard)
 		show("over")
 	end

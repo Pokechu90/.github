@@ -47,6 +47,8 @@ const H_SKINS = {
   lmg: [['lmg_franken', 'Frankenstein', 'stitch', 0x26301e, 0x5a7a4a, 0x2e3a26, 0x9aff4a, 1, 260], ['lmg_phantom', 'Phantom', 'ghost', 0x0e1a22, 0x223a48, 0x18303c, 0xaaf0ff, 1, 260], ['lmg_hoard', 'Candy Hoard', 'candycorn', 0xf4f0e4, 0xffb81a, 0xff6a14, 0xffffff, 0, 220]],
   sniper: [['sniper_raven', "Raven's Watch", 'moon', 0x0c0c18, 0x161630, 0x22223e, 0xffd27a, 1, 280], ['sniper_widow', 'Widowmaker', 'web', 0x0e0e10, 0x141416, 0x5a0a12, 0xff2a3a, 0, 240], ['sniper_crypt', 'Crypt Keeper', 'grave', 0x34363a, 0x52565a, 0x404448, 0x9aff6a, 1, 240]],
   plasma: [['plasma_wisp', "Will-o'-Wisp", 'flames', 0x0a1a1e, 0x0e2a30, 0x103a3a, 0x5dffe0, 1, 300], ['plasma_count', "Count's Crest", 'vampire', 0x100608, 0x180a0c, 0x6a1018, 0xffc040, 0, 300], ['plasma_banshee', 'Banshee', 'ghost', 0x120c1e, 0x2a1a44, 0x1c1430, 0xd0a0ff, 1, 300]],
+  reaper: [['reaper_wraith', 'Wraithbone', 'ghost', 0xd8d0b8, 0x26242a, 0x1a3a30, 0x5dffb0, 1, 320], ['reaper_ember', 'Hellreaper', 'flames', 0x161010, 0x2a0e08, 0x3a1608, 0xff7a1a, 1, 320]],
+  fang: [['fang_night', 'Nightwalker', 'hex', 0x100c18, 0x2a1440, 0x1a1028, 0xc080ff, 1, 320], ['fang_moon', 'Crimson Moon', 'moon', 0x140808, 0x2a0a10, 0x3a0e16, 0xffd27a, 1, 320]],
 };
 for (const [gun, list] of Object.entries(H_SKINS)) for (const [k, name, pattern, metal, poly, alt, accent, glow, price] of list)
   SKINS[k] = { name, metal, poly, alt, accent, glow: !!glow, pattern, only: gun, candy: price, event: 'halloween', how: `Skin Studio · ${price} candy corn` };

@@ -51,7 +51,7 @@ local function weld(a, b)
 	w.Parent = a
 end
 
-local ZONES = { Head = "head", Antenna = "head", Visor = "head", Eye = "head", Leg = "limb", Arm = "limb", Thigh = "limb", Foot = "limb", Shoulder = "limb", Core = "weak", Vent = "weak", Cell = "weak", Shield = "shield" }
+local ZONES = { Head = "head", Antenna = "head", Visor = "head", Eye = "head", Socket = "head", Jaw = "head", Hood = "head", Hat = "head", Ear = "head", Hand = "limb", Wing = "limb", Leg = "limb", Arm = "limb", Thigh = "limb", Foot = "limb", Shoulder = "limb", Core = "weak", Vent = "weak", Cell = "weak", Shield = "shield" }
 
 local function maker(model, s)
 	return function(name, size, color, mat, cf, shape)
@@ -84,86 +84,8 @@ local function finishModel(model, kind, root)
 	return hl
 end
 
--- ground walker: humanoid rig with Motor6D hips and shoulders the client animates
-local function buildWalker(kind, pos)
-	local k = Config.Enemies[kind]
-	local s = k.scale or 1
-	local model = Instance.new("Model")
-	model.Name = k.name
-	local mk = maker(model, s)
-	local base = CFrame.new(pos)
-	local root = mk("HumanoidRootPart", V(2.2, 2, 1.2), k.color, Enum.Material.SmoothPlastic, base)
-	root.Transparency = 1
-	root.CanCollide = true
-	root.CanQuery = false
-	root.Massless = false
-	local torso = mk("Torso", V(2.2, 2.3, 1.4), k.color, Enum.Material.Metal, base * CFrame.new(0, 1.35 * s, 0)); weld(root, torso)
-	local plate = mk("Plate", V(1.6, 1, 0.2), DARK, Enum.Material.DiamondPlate, torso.CFrame * CFrame.new(0, 0.1 * s, -0.75 * s)); weld(torso, plate)
-	local chest = mk("Glow", V(1.1, 0.2, 0.1), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0.5 * s, -0.86 * s)); weld(torso, chest)
-	local pelvis = mk("Pelvis", V(1.5, 0.7, 1.2), DARK, Enum.Material.Metal, base * CFrame.new(0, -0.1 * s, 0)); weld(root, pelvis)
-	local head = mk("Head", V(1.2, 1.05, 1.2), k.color, Enum.Material.Metal, torso.CFrame * CFrame.new(0, 1.75 * s, 0)); weld(torso, head)
-	local visor = mk("Visor", V(1.0, 0.25, 0.1), k.glow, Enum.Material.Neon, head.CFrame * CFrame.new(0, 0.05 * s, -0.62 * s)); weld(head, visor)
-	local ant = mk("Antenna", V(0.1, 0.55, 0.1), DARK, Enum.Material.Metal, head.CFrame * CFrame.new(0.4 * s, 0.75 * s, 0.2 * s)); weld(head, ant)
-
-	-- per-type silhouettes and weak points
-	if kind == "exploder" then
-		local core = mk("Core", V(1.2, 1.2, 1.2), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0, -0.75 * s), Enum.PartType.Ball); weld(torso, core)
-		local l = Instance.new("PointLight"); l.Color, l.Range, l.Brightness = k.glow, 10, 2; l.Parent = core
-	elseif kind == "tank" then
-		local vent = mk("Vent", V(1.3, 1.1, 0.3), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0.3 * s, 0.8 * s)); weld(torso, vent)
-		for _, side in ipairs({ -1, 1 }) do
-			local pod = mk("Armor", V(0.9, 1.6, 1.6), k.color, Enum.Material.DiamondPlate, torso.CFrame * CFrame.new(side * 1.2 * s, 0.7 * s, 0)); weld(torso, pod)
-		end
-	elseif kind == "shield" then
-		local cell = mk("Cell", V(0.9, 1.0, 0.35), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0.2 * s, 0.85 * s)); weld(torso, cell)
-	elseif kind == "sniper" then
-		local cloak = mk("Cloak", V(2.4, 1.6, 1.5), Color3.fromRGB(58, 64, 50), Enum.Material.Fabric, torso.CFrame * CFrame.new(0, 0.35 * s, 0.05 * s)); weld(torso, cloak)
-	elseif kind == "runner" then
-		torso.Size = V(1.8, 2.0, 1.2) * s
-	end
-
-	for i, side in ipairs({ -1, 1 }) do
-		local leg = mk("Leg", V(0.7, 3.6, 0.75), DARK, Enum.Material.Metal, base * CFrame.new(side * 0.6 * s, -2.2 * s, 0))
-		local hip = Instance.new("Motor6D")
-		hip.Name = "Hip" .. i
-		hip.Part0, hip.Part1 = root, leg
-		hip.C0 = CFrame.new(side * 0.6 * s, -0.4 * s, 0)
-		hip.C1 = CFrame.new(0, 1.8 * s, 0)
-		hip.Parent = root
-		local thigh = mk("Thigh", V(0.85, 1.4, 0.9), k.color, Enum.Material.Metal, leg.CFrame * CFrame.new(0, 0.9 * s, 0)); weld(leg, thigh)
-		local foot = mk("Foot", V(0.8, 0.3, 1.2), k.color, Enum.Material.Metal, leg.CFrame * CFrame.new(0, -1.65 * s, -0.18 * s)); weld(leg, foot)
-
-		local arm = mk("Arm", V(0.55, 2.4, 0.6), DARK, Enum.Material.Metal, torso.CFrame)
-		local sh = Instance.new("Motor6D")
-		sh.Name = "Shoulder" .. i
-		sh.Part0, sh.Part1 = torso, arm
-		local aimArm = side == 1 and not k.melee
-		local shieldArm = side == -1 and kind == "shield"
-		local pose = CFrame.new()
-		if aimArm or shieldArm then pose = CFrame.Angles(math.rad(90), 0, 0)
-		elseif not k.melee then pose = CFrame.Angles(math.rad(65), 0, math.rad(-30)) end
-		sh.C0 = CFrame.new(side * 1.45 * s, 0.8 * s, 0) * pose
-		sh.C1 = CFrame.new(0, 1.1 * s, 0)
-		sh.Parent = torso
-		arm.CFrame = torso.CFrame * sh.C0 * sh.C1:Inverse()
-		local pad = mk("Shoulder", V(0.95, 0.75, 1), k.color, Enum.Material.Metal, arm.CFrame * CFrame.new(0, 1.0 * s, 0)); weld(arm, pad)
-		if k.melee then
-			local blade = mk("Blade", V(0.12, 2.0, 0.5), k.glow, Enum.Material.Neon, arm.CFrame * CFrame.new(0, -1.9 * s, -0.2 * s)); weld(arm, blade)
-		elseif shieldArm then
-			-- a wide energy shield held in front: blocks frontal fire
-			local sp = mk("Shield", V(3.6, 3.6, 0.25), k.glow, Enum.Material.ForceField, torso.CFrame * CFrame.new(-0.3 * s, -0.95 * s, -1.6 * s))
-			sp.Transparency = 0.15
-			weld(torso, sp)
-			local frame = mk("ShieldFrame", V(3.7, 0.2, 0.3), DARK, Enum.Material.Metal, sp.CFrame * CFrame.new(0, 1.85 * s, 0)); weld(sp, frame)
-		elseif aimArm then
-			local long = kind == "sniper"
-			local gun = mk("Gun", V(0.55, long and 3.6 or 2.6, 0.65), DARK, Enum.Material.Metal, arm.CFrame * CFrame.new(0, (long and -2.2 or -1.7) * s, 0.1 * s)); weld(arm, gun)
-			local tip = mk("GunTip", V(0.4, 0.4, 0.4), k.glow, Enum.Material.Neon, arm.CFrame * CFrame.new(0, (long and -4.05 or -3.05) * s, 0.1 * s), Enum.PartType.Ball); weld(arm, tip)
-			tip.Transparency = 0.6
-			if kind == "tank" then gun.Size = V(1.0, 2.6, 1.0) * s; tip.Size = V(0.8, 0.8, 0.8) * s end
-		end
-	end
-
+-- humanoid and facing control shared by every ground walker
+local function walkerRig(model, root, k, s)
 	local hum = Instance.new("Humanoid")
 	hum.HipHeight = 3 * s
 	hum.WalkSpeed = k.speed
@@ -187,6 +109,91 @@ local function buildWalker(kind, pos)
 	align.Responsiveness = 18
 	align.MaxTorque = 1e8
 	align.Parent = root
+	return hum, align
+end
+
+-- ground walker: humanoid rig with Motor6D hips and shoulders the client animates
+local function buildWalker(kind, pos)
+	local k = Config.Enemies[kind]
+	local ai = k.ai or kind
+	local s = k.scale or 1
+	local model = Instance.new("Model")
+	model.Name = k.name
+	local mk = maker(model, s)
+	local base = CFrame.new(pos)
+	local root = mk("HumanoidRootPart", V(2.2, 2, 1.2), k.color, Enum.Material.SmoothPlastic, base)
+	root.Transparency = 1
+	root.CanCollide = true
+	root.CanQuery = false
+	root.Massless = false
+	local torso = mk("Torso", V(2.2, 2.3, 1.4), k.color, Enum.Material.Metal, base * CFrame.new(0, 1.35 * s, 0)); weld(root, torso)
+	local plate = mk("Plate", V(1.6, 1, 0.2), DARK, Enum.Material.DiamondPlate, torso.CFrame * CFrame.new(0, 0.1 * s, -0.75 * s)); weld(torso, plate)
+	local chest = mk("Glow", V(1.1, 0.2, 0.1), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0.5 * s, -0.86 * s)); weld(torso, chest)
+	local pelvis = mk("Pelvis", V(1.5, 0.7, 1.2), DARK, Enum.Material.Metal, base * CFrame.new(0, -0.1 * s, 0)); weld(root, pelvis)
+	local head = mk("Head", V(1.2, 1.05, 1.2), k.color, Enum.Material.Metal, torso.CFrame * CFrame.new(0, 1.75 * s, 0)); weld(torso, head)
+	local visor = mk("Visor", V(1.0, 0.25, 0.1), k.glow, Enum.Material.Neon, head.CFrame * CFrame.new(0, 0.05 * s, -0.62 * s)); weld(head, visor)
+	local ant = mk("Antenna", V(0.1, 0.55, 0.1), DARK, Enum.Material.Metal, head.CFrame * CFrame.new(0.4 * s, 0.75 * s, 0.2 * s)); weld(head, ant)
+
+	-- per-type silhouettes and weak points
+	if ai == "exploder" then
+		local core = mk("Core", V(1.2, 1.2, 1.2), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0, -0.75 * s), Enum.PartType.Ball); weld(torso, core)
+		local l = Instance.new("PointLight"); l.Color, l.Range, l.Brightness = k.glow, 10, 2; l.Parent = core
+	elseif ai == "tank" then
+		local vent = mk("Vent", V(1.3, 1.1, 0.3), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0.3 * s, 0.8 * s)); weld(torso, vent)
+		for _, side in ipairs({ -1, 1 }) do
+			local pod = mk("Armor", V(0.9, 1.6, 1.6), k.color, Enum.Material.DiamondPlate, torso.CFrame * CFrame.new(side * 1.2 * s, 0.7 * s, 0)); weld(torso, pod)
+		end
+	elseif ai == "shield" then
+		local cell = mk("Cell", V(0.9, 1.0, 0.35), k.glow, Enum.Material.Neon, torso.CFrame * CFrame.new(0, 0.2 * s, 0.85 * s)); weld(torso, cell)
+	elseif ai == "sniper" then
+		local cloak = mk("Cloak", V(2.4, 1.6, 1.5), Color3.fromRGB(58, 64, 50), Enum.Material.Fabric, torso.CFrame * CFrame.new(0, 0.35 * s, 0.05 * s)); weld(torso, cloak)
+	elseif ai == "runner" then
+		torso.Size = V(1.8, 2.0, 1.2) * s
+	end
+
+	for i, side in ipairs({ -1, 1 }) do
+		local leg = mk("Leg", V(0.7, 3.6, 0.75), DARK, Enum.Material.Metal, base * CFrame.new(side * 0.6 * s, -2.2 * s, 0))
+		local hip = Instance.new("Motor6D")
+		hip.Name = "Hip" .. i
+		hip.Part0, hip.Part1 = root, leg
+		hip.C0 = CFrame.new(side * 0.6 * s, -0.4 * s, 0)
+		hip.C1 = CFrame.new(0, 1.8 * s, 0)
+		hip.Parent = root
+		local thigh = mk("Thigh", V(0.85, 1.4, 0.9), k.color, Enum.Material.Metal, leg.CFrame * CFrame.new(0, 0.9 * s, 0)); weld(leg, thigh)
+		local foot = mk("Foot", V(0.8, 0.3, 1.2), k.color, Enum.Material.Metal, leg.CFrame * CFrame.new(0, -1.65 * s, -0.18 * s)); weld(leg, foot)
+
+		local arm = mk("Arm", V(0.55, 2.4, 0.6), DARK, Enum.Material.Metal, torso.CFrame)
+		local sh = Instance.new("Motor6D")
+		sh.Name = "Shoulder" .. i
+		sh.Part0, sh.Part1 = torso, arm
+		local aimArm = side == 1 and not k.melee
+		local shieldArm = side == -1 and ai == "shield"
+		local pose = CFrame.new()
+		if aimArm or shieldArm then pose = CFrame.Angles(math.rad(90), 0, 0)
+		elseif not k.melee then pose = CFrame.Angles(math.rad(65), 0, math.rad(-30)) end
+		sh.C0 = CFrame.new(side * 1.45 * s, 0.8 * s, 0) * pose
+		sh.C1 = CFrame.new(0, 1.1 * s, 0)
+		sh.Parent = torso
+		arm.CFrame = torso.CFrame * sh.C0 * sh.C1:Inverse()
+		local pad = mk("Shoulder", V(0.95, 0.75, 1), k.color, Enum.Material.Metal, arm.CFrame * CFrame.new(0, 1.0 * s, 0)); weld(arm, pad)
+		if k.melee then
+			local blade = mk("Blade", V(0.12, 2.0, 0.5), k.glow, Enum.Material.Neon, arm.CFrame * CFrame.new(0, -1.9 * s, -0.2 * s)); weld(arm, blade)
+		elseif shieldArm then
+			-- a wide energy shield held in front: blocks frontal fire
+			local sp = mk("Shield", V(3.6, 3.6, 0.25), k.glow, Enum.Material.ForceField, torso.CFrame * CFrame.new(-0.3 * s, -0.95 * s, -1.6 * s))
+			sp.Transparency = 0.15
+			weld(torso, sp)
+			local frame = mk("ShieldFrame", V(3.7, 0.2, 0.3), DARK, Enum.Material.Metal, sp.CFrame * CFrame.new(0, 1.85 * s, 0)); weld(sp, frame)
+		elseif aimArm then
+			local long = ai == "sniper"
+			local gun = mk("Gun", V(0.55, long and 3.6 or 2.6, 0.65), DARK, Enum.Material.Metal, arm.CFrame * CFrame.new(0, (long and -2.2 or -1.7) * s, 0.1 * s)); weld(arm, gun)
+			local tip = mk("GunTip", V(0.4, 0.4, 0.4), k.glow, Enum.Material.Neon, arm.CFrame * CFrame.new(0, (long and -4.05 or -3.05) * s, 0.1 * s), Enum.PartType.Ball); weld(arm, tip)
+			tip.Transparency = 0.6
+			if ai == "tank" then gun.Size = V(1.0, 2.6, 1.0) * s; tip.Size = V(0.8, 0.8, 0.8) * s end
+		end
+	end
+
+	local hum, align = walkerRig(model, root, k, s)
 	return model, root, hum, align, finishModel(model, kind, root)
 end
 
@@ -229,6 +236,180 @@ local function buildDrone(pos)
 	return model, root, ap, ao, finishModel(model, "drone", root)
 end
 
+---------------------------------------------------------------- Halloween mobs (Night of Terror)
+local M = Enum.Material
+local BONE, BLACK = Color3.fromRGB(230, 220, 192), Color3.fromRGB(10, 8, 10)
+local function motor(name, p0, p1, c0, c1)
+	local m = Instance.new("Motor6D")
+	m.Name, m.Part0, m.Part1, m.C0, m.C1 = name, p0, p1, c0, c1
+	m.Parent = p0
+	return m
+end
+
+-- spooky walkers share the bot skeleton (root, hips, shoulders) so the client animates them the same way
+local function buildSpook(kind, pos)
+	local k = Config.Enemies[kind]
+	local look = k.look
+	local s = k.scale or 1
+	local model = Instance.new("Model")
+	model.Name = k.name
+	local mk = maker(model, s)
+	local base = CFrame.new(pos)
+	local skin = look == "skeleton" and BONE or (look == "witch" and Color3.fromRGB(122, 170, 96) or k.color)
+	local cloth = ({ zombie = Color3.fromRGB(70, 84, 104), witch = Color3.fromRGB(34, 22, 44), pumpkin = Color3.fromRGB(84, 64, 40), brute = Color3.fromRGB(70, 60, 44), keeper = Color3.fromRGB(28, 24, 34) })[look] or BONE
+	local root = mk("HumanoidRootPart", V(2.2, 2, 1.2), cloth, M.SmoothPlastic, base)
+	root.Transparency, root.CanCollide, root.CanQuery, root.Massless = 1, true, false, false
+	local thin = look == "skeleton"
+	local torso = mk("Torso", thin and V(1.5, 2.2, 0.8) or V(2.2, 2.3, 1.3), thin and BONE or cloth, thin and M.Marble or M.Fabric, base * CFrame.new(0, 1.35 * s, 0)); weld(root, torso)
+	if thin then
+		for i = 0, 2 do
+			local rib = mk("Rib", V(1.9, 0.18, 1.1), BONE, M.Marble, torso.CFrame * CFrame.new(0, 0.55 * s - i * 0.45 * s, 0)); weld(torso, rib)
+		end
+	end
+	local pelvis = mk("Pelvis", V(1.5, 0.6, 1.0), thin and BONE or cloth, thin and M.Marble or M.Fabric, base * CFrame.new(0, -0.1 * s, 0)); weld(root, pelvis)
+
+	-- heads
+	local head
+	if look == "pumpkin" then
+		head = mk("Core", V(1.9, 1.6, 1.9), Color3.fromRGB(232, 118, 28), M.SmoothPlastic, torso.CFrame * CFrame.new(0, 2.0 * s, 0), Enum.PartType.Ball); weld(torso, head)
+		local stem = mk("Stem", V(0.2, 0.45, 0.2), Color3.fromRGB(70, 110, 40), M.Wood, head.CFrame * CFrame.new(0, 0.95 * s, 0)); weld(head, stem)
+		for _, x in ipairs({ -0.4, 0.4 }) do
+			local eye = mk("Glow", V(0.35, 0.3, 0.1), k.glow, M.Neon, head.CFrame * CFrame.new(x * s, 0.2 * s, -0.92 * s) * CFrame.Angles(0, 0, math.rad(45))); weld(head, eye)
+		end
+		local grin = mk("Glow", V(0.95, 0.22, 0.1), k.glow, M.Neon, head.CFrame * CFrame.new(0, -0.3 * s, -0.9 * s)); weld(head, grin)
+		local l = Instance.new("PointLight"); l.Color, l.Range, l.Brightness = k.glow, 12, 2; l.Parent = head
+	else
+		head = mk("Head", look == "brute" and V(1.4, 1.2, 1.4) or V(1.1, 1.15, 1.15), skin, thin and M.Marble or M.SmoothPlastic, torso.CFrame * CFrame.new(0, 1.75 * s, look == "brute" and -0.35 * s or 0)); weld(torso, head)
+		for _, x in ipairs({ -0.25, 0.25 }) do
+			local eye = mk(thin and "Socket" or "Eye", V(0.26, 0.22, 0.1), thin and BLACK or k.glow, thin and M.SmoothPlastic or M.Neon, head.CFrame * CFrame.new(x * s, 0.12 * s, -0.58 * s)); weld(head, eye)
+			if thin then
+				local spark = mk("Eye", V(0.1, 0.1, 0.05), k.glow, M.Neon, eye.CFrame * CFrame.new(0, 0, -0.04 * s)); weld(head, spark)
+			end
+		end
+		if thin then
+			local jaw = mk("Jaw", V(0.8, 0.3, 0.75), BONE, M.Marble, head.CFrame * CFrame.new(0, -0.62 * s, -0.12 * s)); weld(head, jaw)
+		end
+	end
+	if look == "witch" then
+		local brim = mk("Hat", V(0.12, 2.4, 2.4), BLACK, M.Fabric, head.CFrame * CFrame.new(0, 0.62 * s, 0) * CFrame.Angles(0, 0, math.pi / 2), Enum.PartType.Cylinder); weld(head, brim)
+		for i = 1, 4 do
+			local w = 1.15 - i * 0.24
+			local cone = mk("Hat", V(w, 0.5, w), BLACK, M.Fabric, head.CFrame * CFrame.new(0.06 * i * s, (0.75 + i * 0.42) * s, 0.04 * i * s) * CFrame.Angles(0, 0, math.rad(-6 * i))); weld(head, cone)
+		end
+		local band = mk("Glow", V(1.17, 0.14, 1.17), Color3.fromRGB(110, 60, 160), M.Neon, head.CFrame * CFrame.new(0, 0.95 * s, 0)); weld(head, band)
+		local robe = mk("Robe", V(2.3, 3.0, 1.6), cloth, M.Fabric, base * CFrame.new(0, -1.3 * s, 0)); weld(root, robe)
+	elseif look == "keeper" then
+		local hood = mk("Hood", V(1.45, 1.45, 1.45), cloth, M.Fabric, head.CFrame * CFrame.new(0, 0.15 * s, 0.12 * s)); weld(head, hood)
+		head.Color = Color3.fromRGB(16, 12, 18)
+		local robe = mk("Robe", V(2.4, 3.2, 1.6), cloth, M.Fabric, base * CFrame.new(0, -1.4 * s, 0)); weld(root, robe)
+	elseif look == "zombie" then
+		local rag = mk("Rag", V(2.25, 0.5, 1.35), Color3.fromRGB(110, 40, 36), M.Fabric, torso.CFrame * CFrame.new(0.2 * s, -0.9 * s, 0) * CFrame.Angles(0, 0, math.rad(8))); weld(torso, rag)
+	elseif look == "brute" then
+		local lantern = mk("Vent", V(0.9, 1.2, 0.9), k.glow, M.Neon, torso.CFrame * CFrame.new(0, 0.2 * s, 0.95 * s)); weld(torso, lantern)
+		local l = Instance.new("PointLight"); l.Color, l.Range, l.Brightness = k.glow, 14, 2; l.Parent = lantern
+		local hump = mk("Hump", V(2.0, 1.2, 1.2), skin, M.SmoothPlastic, torso.CFrame * CFrame.new(0, 1.1 * s, 0.2 * s)); weld(torso, hump)
+	end
+
+	-- limbs: legs on hip motors, arms on shoulder motors
+	local limb = thin and BONE or (look == "zombie" and Color3.fromRGB(60, 52, 40) or cloth)
+	for i, side in ipairs({ -1, 1 }) do
+		local leg = mk("Leg", thin and V(0.35, 3.6, 0.35) or V(0.7, 3.6, 0.75), limb, thin and M.Marble or M.Fabric, base * CFrame.new(side * 0.6 * s, -2.2 * s, 0))
+		motor("Hip" .. i, root, leg, CFrame.new(side * 0.6 * s, -0.4 * s, 0), CFrame.new(0, 1.8 * s, 0))
+		local foot = mk("Foot", V(0.7, 0.3, 1.0), thin and BONE or BLACK, thin and M.Marble or M.SmoothPlastic, leg.CFrame * CFrame.new(0, -1.65 * s, -0.18 * s)); weld(leg, foot)
+
+		local arm = mk("Arm", thin and V(0.3, 2.4, 0.3) or V(0.55, 2.4, 0.6), (look == "zombie" or look == "brute" or look == "witch") and skin or limb, thin and M.Marble or M.SmoothPlastic, torso.CFrame)
+		local aimArm = side == 1 and not k.melee
+		local shieldArm = side == -1 and k.ai == "shield"
+		local pose = CFrame.new()
+		if look == "zombie" or aimArm or shieldArm then pose = CFrame.Angles(math.rad(90), 0, 0)
+		elseif not k.melee then pose = CFrame.Angles(math.rad(65), 0, math.rad(-30)) end
+		local sh = motor("Shoulder" .. i, torso, arm, CFrame.new(side * (thin and 1.0 or 1.45) * s, 0.8 * s, 0) * pose, CFrame.new(0, 1.1 * s, 0))
+		arm.CFrame = torso.CFrame * sh.C0 * sh.C1:Inverse()
+		local tipAt
+		if look == "skeleton" and aimArm then
+			-- a bone bow held upright with a glowing nocked arrow
+			local grip = arm.CFrame * CFrame.new(0, -1.3 * s, 0)
+			for j = -1, 1 do
+				local seg = mk("Bow", V(0.16, 1.2, 0.16), Color3.fromRGB(90, 60, 34), M.Wood, grip * CFrame.new(0, 0, j * 1.0 * s) * CFrame.Angles(math.rad(90 + j * 25), 0, 0) * CFrame.new(0, 0, j * -0.25 * s)); weld(arm, seg)
+			end
+			local str = mk("String", V(0.04, 0.04, 2.6), Color3.fromRGB(240, 240, 240), M.SmoothPlastic, grip * CFrame.new(0, 0.45 * s, 0)); weld(arm, str)
+			tipAt = grip * CFrame.new(0, -0.3 * s, -0.1 * s)
+		elseif look == "witch" and aimArm then
+			local staff = mk("Staff", V(0.18, 4.2, 0.18), Color3.fromRGB(70, 44, 26), M.Wood, arm.CFrame * CFrame.new(0, -1.1 * s, 0) * CFrame.Angles(math.rad(-90), 0, 0)); weld(arm, staff)
+			tipAt = arm.CFrame * CFrame.new(0, -1.1 * s, -2.2 * s)
+		elseif look == "brute" and aimArm then
+			local shovel = mk("Shovel", V(0.2, 3.4, 0.2), Color3.fromRGB(70, 50, 30), M.Wood, arm.CFrame * CFrame.new(0, -2.2 * s, 0)); weld(arm, shovel)
+			local blade = mk("Blade", V(0.9, 1.0, 0.1), Color3.fromRGB(120, 120, 120), M.Metal, arm.CFrame * CFrame.new(0, -4.0 * s, 0)); weld(arm, blade)
+			tipAt = arm.CFrame * CFrame.new(0, -4.2 * s, 0)
+		elseif look == "keeper" and aimArm then
+			local lamp = mk("Censer", V(0.5, 0.6, 0.5), Color3.fromRGB(60, 50, 40), M.Metal, arm.CFrame * CFrame.new(0, -1.5 * s, 0)); weld(arm, lamp)
+			tipAt = arm.CFrame * CFrame.new(0, -1.9 * s, 0)
+		elseif shieldArm then
+			-- a coffin lid as a shield: blocks frontal fire like the Bulwark's energy shield
+			local lid = mk("Shield", V(2.4, 4.2, 0.3), Color3.fromRGB(84, 52, 30), M.WoodPlanks, torso.CFrame * CFrame.new(-0.3 * s, -0.8 * s, -1.6 * s)); weld(torso, lid)
+			local crossV = mk("Cross", V(0.25, 2.2, 0.1), Color3.fromRGB(200, 170, 90), M.Metal, lid.CFrame * CFrame.new(0, 0.4 * s, -0.2 * s)); weld(lid, crossV)
+			local crossH = mk("Cross", V(1.2, 0.25, 0.1), Color3.fromRGB(200, 170, 90), M.Metal, lid.CFrame * CFrame.new(0, 0.9 * s, -0.2 * s)); weld(lid, crossH)
+		elseif look == "zombie" or look == "pumpkin" then
+			local hand = mk("Hand", V(0.5, 0.5, 0.5), skin, M.SmoothPlastic, arm.CFrame * CFrame.new(0, -1.3 * s, 0)); weld(arm, hand)
+		end
+		if tipAt then
+			local tip = mk("GunTip", V(0.4, 0.4, 0.4), k.glow, M.Neon, tipAt, Enum.PartType.Ball); weld(arm, tip)
+			tip.Transparency = 0.6
+		end
+	end
+	local hum, align = walkerRig(model, root, k, s)
+	return model, root, hum, align, finishModel(model, kind, root)
+end
+
+-- bats and ghosts fly like drones
+local function buildSpookFlyer(kind, pos)
+	local k = Config.Enemies[kind]
+	local model = Instance.new("Model")
+	model.Name = k.name
+	local mk = maker(model, 1)
+	local base = CFrame.new(pos)
+	local root
+	if k.look == "bat" then
+		root = mk("Body", V(1.6, 1.4, 1.8), k.color, M.Fabric, base, Enum.PartType.Ball)
+		local head = mk("Head", V(1.0, 0.9, 0.9), k.color, M.Fabric, base * CFrame.new(0, 0.4, -0.9)); weld(root, head)
+		for _, side in ipairs({ -1, 1 }) do
+			local ear = mk("Ear", V(0.2, 0.6, 0.3), k.color, M.Fabric, head.CFrame * CFrame.new(side * 0.32, 0.6, 0)); weld(head, ear)
+			local eye = mk("Eye", V(0.18, 0.18, 0.1), k.glow, M.Neon, head.CFrame * CFrame.new(side * 0.22, 0.1, -0.48)); weld(head, eye)
+			local wing = mk("Wing", V(3.0, 0.1, 1.6), Color3.fromRGB(60, 30, 40), M.Fabric, base * CFrame.new(side * 2.0, 0.2, 0) * CFrame.Angles(0, 0, side * math.rad(-12))); weld(root, wing)
+			local bone = mk("WingBone", V(3.0, 0.16, 0.16), Color3.fromRGB(30, 20, 26), M.SmoothPlastic, wing.CFrame * CFrame.new(0, 0.05, -0.75)); weld(wing, bone)
+		end
+	else
+		root = mk("Body", V(2.2, 2.6, 2.2), k.color, M.Glass, base, Enum.PartType.Ball)
+		root.Transparency = 0.35
+		local skirt = mk("Sheet", V(2.4, 1.8, 2.4), k.color, M.Glass, base * CFrame.new(0, -1.6, 0)); weld(root, skirt)
+		skirt.Transparency = 0.45
+		for _, side in ipairs({ -1, 1 }) do
+			local eye = mk("Eye", V(0.38, 0.55, 0.1), BLACK, M.SmoothPlastic, base * CFrame.new(side * 0.42, 0.3, -1.08)); weld(root, eye)
+		end
+		local mouth = mk("Eye", V(0.5, 0.35, 0.1), BLACK, M.SmoothPlastic, base * CFrame.new(0, -0.35, -1.08)); weld(root, mouth)
+		local l = Instance.new("PointLight"); l.Color, l.Range, l.Brightness = k.glow, 14, 1.2; l.Parent = root
+	end
+	root.Massless = false
+	local tip = mk("GunTip", V(0.45, 0.45, 0.45), k.glow, M.Neon, base * CFrame.new(0, -0.2, -1.2), Enum.PartType.Ball); weld(root, tip)
+	tip.Transparency = 0.6
+	local att = Instance.new("Attachment"); att.Parent = root
+	local ap = Instance.new("AlignPosition")
+	ap.Mode = Enum.PositionAlignmentMode.OneAttachment
+	ap.Attachment0 = att
+	ap.MaxForce = 1e6
+	ap.MaxVelocity = k.speed
+	ap.Responsiveness = 12
+	ap.Position = pos
+	ap.Parent = root
+	local ao = Instance.new("AlignOrientation")
+	ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	ao.Attachment0 = att
+	ao.Responsiveness = 14
+	ao.MaxTorque = 1e7
+	ao.Parent = root
+	return model, root, ap, ao, finishModel(model, kind, root)
+end
+
 function Enemies.spawn(kind: string, pos: Vector3, opts: any?)
 	local k = Config.Enemies[kind]
 	local sc = ctx.scale()
@@ -239,16 +420,19 @@ function Enemies.spawn(kind: string, pos: Vector3, opts: any?)
 		strafeT = rand(1, 3), stuckT = 0, meleeT = 0.8, burst = 0, burstT = 0, spawnT = 0.7, stunT = 0,
 		waypoints = nil, wpi = 1, pathT = 0, flashT = 0, charged = false, dist = 999, fuse = nil, orbitA = rand(0, math.pi * 2),
 	}, Enemy)
-	if kind == "drone" then
+	e.ai = k.ai or kind
+	if e.ai == "drone" then
 		local p = pos + V(0, rand(12, 18), 0)
-		local model, root, ap, ao, hl = buildDrone(p)
+		local model, root, ap, ao, hl
+		if k.look then model, root, ap, ao, hl = buildSpookFlyer(kind, p) else model, root, ap, ao, hl = buildDrone(p) end
 		e.model, e.root, e.ap, e.align, e.hl = model, root, ap, ao, hl
 		e.lastPos = p
 		e.alt = rand(12, 18)
 		ap.MaxVelocity = k.speed * e.speedMul
 	else
 		local p = pos + V(0, 3 * s * 1.35 + 1, 0)
-		local model, root, hum, align, hl = buildWalker(kind, p)
+		local model, root, hum, align, hl
+		if k.look then model, root, hum, align, hl = buildSpook(kind, p) else model, root, hum, align, hl = buildWalker(kind, p) end
 		e.model, e.root, e.hum, e.align, e.hl = model, root, hum, align, hl
 		e.lastPos = p
 		hum.WalkSpeed = k.speed * e.speedMul
@@ -256,7 +440,7 @@ function Enemies.spawn(kind: string, pos: Vector3, opts: any?)
 	if opts and opts.elite then e.hpMax *= 1.4 end
 	e.hp = e.hpMax
 	e.tip = e.model:FindFirstChild("GunTip", true)
-	e.head = e.model:FindFirstChild("Head") or e.model:FindFirstChild("Eye")
+	e.head = e.model:FindFirstChild("Head") or e.model:FindFirstChild("Core") or e.model:FindFirstChild("Eye")
 	e.model.Parent = workspace.Enemies
 	e.root:SetNetworkOwner(nil)
 	Enemies.add(e)
@@ -311,7 +495,7 @@ function Enemy:think(target)
 	local k = self.k
 	if k.melee then
 		goal = tpos
-	elseif self.kind == "shield" then
+	elseif self.ai == "shield" then
 		-- presses forward behind its shield, stopping at close range
 		goal = dist > k.pref[1] and tpos or rootPos + V(-dir.Z, 0, dir.X) * self.strafe * 8
 	else
@@ -363,7 +547,7 @@ function Enemy:resetTip()
 	self.charged = false
 	if self.tip then
 		self.tip.Transparency = 0.6
-		self.tip.Size = V(0.4, 0.4, 0.4) * (self.k.scale or 1) * (self.kind == "tank" and 2 or 1)
+		self.tip.Size = V(0.4, 0.4, 0.4) * (self.k.scale or 1) * (self.ai == "tank" and 2 or 1)
 	end
 end
 
@@ -382,15 +566,15 @@ end
 function Enemy:fire(target)
 	if not target.root.Parent then return end
 	local k = self.k
-	if self.kind == "tank" then
+	if self.ai == "tank" then
 		local origin, dir = self:aimAt(target, 0.4)
-		ctx.orb(origin, dir, k.boltSpeed, k.dmg * self.dmgMul, 10, k.glow)
-	elseif self.kind == "sniper" then
+		ctx.orb(origin, dir, k.boltSpeed, k.dmg * self.dmgMul, 10, k.event and Color3.fromRGB(110, 120, 90) or k.glow)
+	elseif self.ai == "sniper" then
 		local origin, dir = self:aimAt(target, 0.15, 0.25)
-		ctx.bolt(origin, dir, 700, k.dmg * self.dmgMul, "snipe")
+		ctx.bolt(origin, dir, 700, k.dmg * self.dmgMul, k.bolt or "snipe")
 	else
 		local origin, dir = self:aimAt(target)
-		ctx.bolt(origin, dir, k.boltSpeed, k.dmg * self.dmgMul, self.kind == "drone" and "drone" or "bolt")
+		ctx.bolt(origin, dir, k.boltSpeed, k.dmg * self.dmgMul, k.bolt or (self.ai == "drone" and "drone" or "bolt"))
 	end
 end
 
@@ -440,7 +624,7 @@ function Enemy:update(dt, target)
 	local tpos = target.root.Position
 	local k = self.k
 
-	if self.kind == "drone" then
+	if self.ai == "drone" then
 		-- orbit the target at range, bobbing, and dive closer when it has no line of sight
 		self.orbitA += dt * 0.6 * self.strafe
 		local r = self.los and 36 or 16
@@ -451,7 +635,7 @@ function Enemy:update(dt, target)
 		self:face(V(tpos.X, rootPos.Y, tpos.Z))
 	else
 		local look
-		if self.los or self.dist < 40 or self.kind == "shield" then
+		if self.los or self.dist < 40 or self.ai == "shield" then
 			look = V(tpos.X, rootPos.Y, tpos.Z)
 		else
 			local v = self.root.AssemblyLinearVelocity
@@ -462,7 +646,7 @@ function Enemy:update(dt, target)
 
 	if k.melee then
 		local d = (tpos - rootPos).Magnitude
-		if self.kind == "exploder" then
+		if self.ai == "exploder" then
 			if self.fuse then
 				self.fuse -= dt
 				if self.fuse <= 0 then
@@ -489,30 +673,30 @@ function Enemy:update(dt, target)
 		self.burstT -= dt
 		if self.burstT <= 0 then self:fire(target); self.burst -= 1; self.burstT = 0.16 end
 	end
-	local range = self.kind == "sniper" and 260 or 210
+	local range = self.ai == "sniper" and 260 or 210
 	if self.los and self.dist < range then
 		self.fireT -= dt
-		local win = self.kind == "sniper" and 1.1 or 0.45
+		local win = self.ai == "sniper" and 1.1 or 0.45
 		if self.fireT < win and self.tip then
 			local c = 1 - math.max(self.fireT, 0) / win
 			self.tip.Transparency = 0.6 - c * 0.6
-			self.tip.Size = V(0.4, 0.4, 0.4) * (k.scale or 1) * (self.kind == "tank" and 2 or 1) * (1 + c * 1.3)
+			self.tip.Size = V(0.4, 0.4, 0.4) * (k.scale or 1) * (self.ai == "tank" and 2 or 1) * (1 + c * 1.3)
 			if not self.charged then
 				self.charged = true
-				if self.kind == "sniper" then ctx.fx("snipeCharge", self.tip, target.player, win) else ctx.fx("charge", self.tip.Position) end
+				if self.ai == "sniper" then ctx.fx("snipeCharge", self.tip, target.player, win) else ctx.fx("charge", self.tip.Position) end
 			end
 		end
 		if self.fireT <= 0 then
-			if self.kind == "sniper" then self.fireT = rand(3.2, 4.4)
+			if self.ai == "sniper" then self.fireT = rand(3.2, 4.4)
 			else self.fireT = rand(k.rate[1], k.rate[2]) * (self.dist < 35 and 0.8 or 1) end
 			self:resetTip()
-			if self.kind == "grunt" and ctx.wave() >= 8 and rng:NextNumber() < 0.4 then self.burst = 3; self.burstT = 0 else self:fire(target) end
+			if self.ai == "grunt" and ctx.wave() >= 8 and rng:NextNumber() < 0.4 then self.burst = 3; self.burstT = 0 else self:fire(target) end
 		end
 	else
-		self.fireT = math.max(self.fireT, self.kind == "sniper" and 1.3 or 0.7)
+		self.fireT = math.max(self.fireT, self.ai == "sniper" and 1.3 or 0.7)
 		if self.charged then
 			self:resetTip()
-			if self.kind == "sniper" then ctx.fx("snipeCancel", self.tip) end
+			if self.ai == "sniper" then ctx.fx("snipeCancel", self.tip) end
 		end
 	end
 end
@@ -520,7 +704,7 @@ end
 -- info: { dir, owner, weapon, part, source }. Returns killed, damage dealt.
 function Enemy:damage(amount: number, info)
 	if self.hp <= 0 then return false, 0 end
-	if info.part == "weak" and self.kind == "exploder" and info.owner then
+	if info.part == "weak" and self.ai == "exploder" and info.owner then
 		local dealt = self.hp
 		self.hp = 0
 		self:die(info)
@@ -579,8 +763,8 @@ function Enemy:die(info)
 	end
 	Debris:AddItem(self.model, 6)
 	ctx.fx("botDeath", eye, self.kind, popHead)
-	if self.kind == "exploder" then self:detonate(info.source ~= "self" and info.owner or nil, info.weapon) end
-	if self.kind == "tank" then ctx.explosion(pos, 16, 40, info.owner, { source = "explosion", weapon = info.weapon, selfDamage = 0.25 }) end
+	if self.ai == "exploder" then self:detonate(info.source ~= "self" and info.owner or nil, info.weapon) end
+	if self.ai == "tank" then ctx.explosion(pos, 16, 40, info.owner, { source = "explosion", weapon = info.weapon, selfDamage = 0.25 }) end
 	ctx.onKill(self, info, pos)
 end
 

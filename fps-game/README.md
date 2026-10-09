@@ -38,6 +38,16 @@ Every faction has its own models, projectiles, sounds, hit effects and death eff
   - Raises the dead around itself, with an **Acolyte** healer.
   - Blinks away when you get close; in the final phase, erupts grave novas under you. Its soul gem is the weak point.
 
+**Halloween event: Night of Terror** (runs through October and the first week of November; add `?halloween` to the URL to force it on, or `?halloween=off` to hide it):
+- A separate mode on the Play screen with night lighting, fog, jack-o'-lanterns, gravestones, dead trees, cobwebs and bat flocks.
+- Its own monsters: skeleton archers firing bone arrows, zombies, vampire bats, ghosts, witches with hex bolts, pumpkin bombers, gravedigger brutes and coffin keepers whose lids block shots.
+- **Dracula** is the boss every fifth wave. He claws you to heal himself, turns to mist and reappears behind you, drains your life with a beam, rains blood, and summons bats, zombies and a blood thrall that heals him.
+- **Candy corn** is the event currency. Every monster drops it in Night of Terror, Dracula drops a pile, and the seven Trick-or-Treat quests pay it out.
+- **28 Halloween skins**, three for every gun (pumpkin, bones, cobweb, candy corn, ghost, hex, blood moon, stitches, flames, gravestone and vampire patterns), bought with candy corn.
+- **Skin Studio:** a 360° turntable from the main menu or the Armory. Drag to spin, scroll to zoom, preview any skin, then buy or equip it.
+- **Reaper's Eye** (sniper) comes from the Reaper's Contract quest line: harvest 350 souls, take 50 headshots, reach wave 10 and defeat Dracula, all in Night of Terror. It has a built-in Soulglass scope and **Fever**: each kill within 5 seconds of the last adds +12% damage (up to 10 stacks) and refunds a round. The streak resets if 5 seconds pass without a kill.
+- **Vampire's Fang** (shotgun) drops from Dracula, about 1 in 3, guaranteed by your third win. It has a built-in holo sight, **lifesteal** (heals 12% of damage dealt) and Thirst (+25% damage below half health).
+
 **Pathfinding.** Each map gets a navigation grid built when it loads, and a flow field toward the player is updated a few frames at a time. Every walking enemy climbs stairs and steps, drops off ledges and detours around long obstacles to reach you on raised floors.
 
 **Bosses every fifth wave**, each with a health bar, three phases (at 50% and 25% health) and weak points:
@@ -136,6 +146,8 @@ Coins and XP get a smaller share of the same multipliers.
 | `js/nav.js` | Navigation grid and flow-field pathfinding |
 | `js/enemies.js` | Robot types, shared enemy AI and the robot bosses |
 | `js/factions.js` | Goblin and undead troops, their models and projectiles, the Goblin Elder and the Lich, faction rotation |
+| `js/halloween.js` | Night of Terror: monsters, Dracula, candy corn, quests, Reaper's Contract, Fever and lifesteal, map dressing |
+| `js/studio.js` | Skin Studio 360° weapon viewer |
 | `js/combat.js` | Projectiles, explosions, grenades, pickups, rewards, killstreaks |
 | `js/ui.js` | HUD and menu screens |
 | `js/game.js` | Player, weapon handling, waves, states, input, main loop |

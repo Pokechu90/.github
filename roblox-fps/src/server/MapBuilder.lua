@@ -223,6 +223,106 @@ function MapBuilder.setBlackout(on: boolean)
 	TweenService:Create(Lighting, TweenInfo.new(1.5), { Brightness = on and base.brightness * 0.3 or base.brightness }):Play()
 end
 
+-- ---------------------------------------------------------------- Night of Terror dressing
+-- A blood-moon night, purple fog, and pumpkins, gravestones and dead trees scattered on open ground.
+local HALLOWEEN_LIGHT = { clock = 0.2, brightness = 1.2, ambient = RGB(52, 36, 70), outdoor = RGB(80, 56, 110), density = 0.42, atmo = RGB(90, 40, 110), decay = RGB(40, 14, 40), exposure = 0.25, tint = RGB(232, 214, 255), stars = 5000 }
+local function jackOLantern(parent, pos: Vector3, size: number)
+	local p = Instance.new("Part")
+	p.Name, p.Shape, p.Anchored, p.CanCollide = "Pumpkin", Enum.PartType.Ball, true, false
+	p.Size = Vector3.new(size * 1.2, size, size * 1.2)
+	p.Color, p.Material = RGB(232, 118, 28), MAT.SmoothPlastic
+	p.CFrame = CFrame.new(pos + Vector3.new(0, size * 0.45, 0)) * CFrame.Angles(0, rand(0, math.pi * 2), 0)
+	p.Parent = parent
+	local stem = Instance.new("Part")
+	stem.Anchored, stem.CanCollide, stem.Size, stem.Color, stem.Material = true, false, Vector3.new(0.3, 0.6, 0.3) * size, RGB(70, 110, 40), MAT.Wood
+	stem.CFrame = p.CFrame * CFrame.new(0, size * 0.55, 0)
+	stem.Parent = parent
+	for _, x in ipairs({ -0.22, 0.22 }) do
+		local eye = Instance.new("Part")
+		eye.Anchored, eye.CanCollide, eye.Size, eye.Color, eye.Material = true, false, Vector3.new(0.2, 0.18, 0.05) * size, RGB(255, 190, 60), MAT.Neon
+		eye.CFrame = p.CFrame * CFrame.new(x * size, 0.12 * size, -0.6 * size) * CFrame.Angles(0, 0, math.rad(45))
+		eye.Parent = parent
+	end
+	local grin = Instance.new("Part")
+	grin.Anchored, grin.CanCollide, grin.Size, grin.Color, grin.Material = true, false, Vector3.new(0.55, 0.12, 0.05) * size, RGB(255, 190, 60), MAT.Neon
+	grin.CFrame = p.CFrame * CFrame.new(0, -0.15 * size, -0.58 * size)
+	grin.Parent = parent
+	local l = Instance.new("PointLight")
+	l.Color, l.Range, l.Brightness, l.Shadows = RGB(255, 140, 40), size * 4, 1.6, false
+	l.Parent = p
+end
+local function gravestone(parent, pos: Vector3)
+	local rot = CFrame.Angles(0, rand(-0.3, 0.3), rand(-0.12, 0.12))
+	local slab = Instance.new("Part")
+	slab.Name, slab.Anchored, slab.CanCollide = "Grave", true, true
+	slab.Size, slab.Color, slab.Material = Vector3.new(2.8, 3.4, 0.7), RGB(110, 112, 118), MAT.Slate
+	slab.CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0)) * rot
+	slab.Parent = parent
+	local top = Instance.new("Part")
+	top.Shape, top.Anchored, top.CanCollide = Enum.PartType.Cylinder, true, false
+	top.Size, top.Color, top.Material = Vector3.new(0.7, 2.8, 2.8), slab.Color, MAT.Slate
+	top.CFrame = slab.CFrame * CFrame.new(0, 1.7, 0) * CFrame.Angles(0, math.pi / 2, 0)
+	top.Parent = parent
+	local mound = Instance.new("Part")
+	mound.Anchored, mound.CanCollide, mound.Size, mound.Color, mound.Material = true, false, Vector3.new(3.4, 0.6, 5.5), RGB(50, 40, 32), MAT.Ground
+	mound.CFrame = CFrame.new(pos + Vector3.new(0, 0.15, -3)) * rot
+	mound.Parent = parent
+end
+local function deadTree(parent, pos: Vector3)
+	local trunkH = rand(9, 14)
+	local wood = RGB(40, 32, 30)
+	local trunk = Instance.new("Part")
+	trunk.Name, trunk.Anchored, trunk.CanCollide = "DeadTree", true, true
+	trunk.Size, trunk.Color, trunk.Material = Vector3.new(1.3, trunkH, 1.3), wood, MAT.Wood
+	trunk.CFrame = CFrame.new(pos + Vector3.new(0, trunkH / 2, 0)) * CFrame.Angles(0, rand(0, 6), rand(-0.08, 0.08))
+	trunk.Parent = parent
+	for i = 1, 4 do
+		local len = rand(4, 7)
+		local b = Instance.new("Part")
+		b.Anchored, b.CanCollide, b.Size, b.Color, b.Material = true, false, Vector3.new(0.5, len, 0.5), wood, MAT.Wood
+		b.CFrame = trunk.CFrame * CFrame.new(0, trunkH * (0.1 + i * 0.1), 0) * CFrame.Angles(0, i * 1.7, rand(0.6, 1.1)) * CFrame.new(0, len / 2, 0)
+		b.Parent = parent
+	end
+end
+
+local halloweenFolder: Folder? = nil
+local mapHalf, mapCeiling = 60, math.huge
+function MapBuilder.setHalloween(on: boolean)
+	if halloweenFolder then halloweenFolder:Destroy(); halloweenFolder = nil end
+	if not on then
+		if MapBuilder.baseLighting then setLighting(MapBuilder.baseLighting) end
+		return
+	end
+	setLighting(HALLOWEEN_LIGHT)
+	local moon = Lighting:FindFirstChildOfClass("Sky")
+	if moon then moon.MoonAngularSize = 22; moon.SunAngularSize = 0 end
+	local cc = Lighting:FindFirstChild("Grade") :: ColorCorrectionEffect?
+	if cc then cc.Saturation = 0.12; cc.Contrast = 0.18 end
+	if not root or not root.Parent then return end
+	local folder = Instance.new("Folder")
+	folder.Name = "Halloween"
+	folder.Parent = root
+	halloweenFolder = folder
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { statics }
+	local half = mapHalf - 4
+	local placed, tries = 0, 0
+	while placed < 46 and tries < 400 do
+		tries += 1
+		local x, z = rand(-half, half), rand(-half, half)
+		local hit = workspace:Raycast(Vector3.new(x * S, 400, z * S), Vector3.new(0, -800, 0), params)
+		if hit and hit.Normal.Y > 0.9 and free(x, z, 1.4, hit.Position.Y / S + 0.1, hit.Position.Y / S + 2.5) then
+			placed += 1
+			local r = placed % 6
+			if r <= 2 then jackOLantern(folder, hit.Position, rand(1.8, 3))
+			elseif r <= 4 then gravestone(folder, hit.Position)
+			elseif mapCeiling > 20 then deadTree(folder, hit.Position)
+			else jackOLantern(folder, hit.Position, 1.6) end
+		end
+	end
+end
+
 -- ---------------------------------------------------------------- maps
 local MAPS = {}
 
@@ -469,6 +569,8 @@ function MapBuilder.build(id: string)
 	drumFolder.Parent = root
 	setLighting(def.light)
 	MapBuilder.baseLighting = def.light
+	mapHalf, mapCeiling = def.half, def.ceiling or math.huge
+	halloweenFolder = nil
 	def.build()
 	for _, n in ipairs({ "Enemies", "Pickups", "Projectiles", "Debris" }) do
 		local f = workspace:FindFirstChild(n) or Instance.new("Folder")

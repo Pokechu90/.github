@@ -76,6 +76,8 @@ function Combat.hitEnemy(plr: Player?, e, zone: string, amount: number, info)
 			table.insert(r.numbers, { info.pos or e:center(), math.floor(dealt + 0.5), killed and (kind == "normal" and "kill" or kind) or kind })
 			local mods = Stats.buffMods(pr.buffs, pr.powerups)
 			if mods.leech > 0 then ctx.heal(plr, dealt * mods.leech) end
+			-- Vampire's Fang: lifesteal on every hit
+			if info.weapon == "fang" and (info.source == "bullet" or info.source == "plasma") then ctx.heal(plr, dealt * Config.Halloween.Lifesteal) end
 		end
 	end
 	return killed
@@ -497,6 +499,18 @@ function Combat.clear()
 	table.clear(reports)
 end
 
+-- event weapon perks: Fever stacks for Reaper's Eye, Thirst for Vampire's Fang below half health
+function Combat.weaponMul(plr: Player, id: string): number
+	local pr = ctx.pr(plr)
+	if id == "reaper" then
+		return 1 + Config.Halloween.Fever.per * ((pr and pr.fever) or 0)
+	elseif id == "fang" then
+		local _, h = ctx.alive(plr)
+		if h and h.Health < h.MaxHealth / 2 then return Config.Halloween.Thirst end
+	end
+	return 1
+end
+
 -- raycast params for player hitscan; characters, effects and pickups are ignored
 local fireParams = RaycastParams.new()
 fireParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -529,7 +543,7 @@ function Combat.hitscan(plr: Player, origin: Vector3, dirs, w)
 		end
 	end
 	local pr = ctx.pr(plr)
-	local damageMul = Stats.buffMods(pr.buffs, pr.powerups).damage
+	local damageMul = Stats.buffMods(pr.buffs, pr.powerups).damage * Combat.weaponMul(plr, w.id)
 	local any = false
 	for e, rec in pairs(perEnemy) do
 		any = true

@@ -26,7 +26,10 @@ local function default()
 		quests = {}, daily = { day = "", q = {} }, board = {},
 		stats = { kills = 0, headshots = 0, bestWave = 0, bestScore = 0, bosses = 0, runs = 0, spent = 0, flawless = 0, explosiveKills = 0, weaponKills = {} },
 		settings = { sens = 1, adsSens = 1, fov = 80, xhColor = "white", toggleAds = false, dmgNumbers = true },
-		difficulty = "normal", map = "yard",
+		difficulty = "normal", map = "yard", mode = "standard",
+		-- grind loop and the Halloween event
+		candy = 0, prestige = 0, pass = { xp = 0, tier = 0 }, login = { day = "", streak = 0, best = 0 },
+		hq = {}, contract = { souls = 0, heads = 0, wave = 0, dracula = 0, done = false }, fangPity = 0,
 	}
 end
 
@@ -56,10 +59,12 @@ function Data.load(plr: Player)
 			task.wait(attempt)
 		end
 	end
+	if prof.loadout.primary == prof.loadout.secondary then prof.loadout.secondary = prof.loadout.primary == "pistol" and "rifle" or "pistol" end
 	if not Config.WeaponById[prof.loadout.primary] or not prof.weapons[prof.loadout.primary] then prof.loadout.primary = "rifle" end
 	if not Config.WeaponById[prof.loadout.secondary] or not prof.weapons[prof.loadout.secondary] then prof.loadout.secondary = "pistol" end
 	profiles[plr] = prof
 	Data.sync(plr)
+	task.delay(4, function() if plr.Parent and profiles[plr] == prof then Data.dailyLogin(plr) end end)
 	return prof
 end
 
@@ -97,7 +102,7 @@ function Data.addCoins(plr: Player, n: number, raw: boolean?): number
 	if not prof then return 0 end
 	local run = getRun(plr)
 	if not raw and run then
-		n *= (Config.Difficulty[run.diff] or Config.Difficulty.normal).reward * Stats.buffMods(run.buffs, run.powerups).coins
+		n *= (Config.Difficulty[run.diff] or Config.Difficulty.normal).reward * Stats.buffMods(run.buffs, run.powerups).coins * Stats.prestigeMult(prof)
 	end
 	n = math.floor(n + 0.5)
 	if n <= 0 then return 0 end
@@ -121,6 +126,7 @@ function Data.grant(plr: Player, r)
 	local prof = profiles[plr]
 	if not prof then return end
 	if r.coins then Data.addCoins(plr, r.coins, true) end
+	if r.candy then Data.addCandy(plr, r.candy) end
 	if r.weapon then prof.weapons[r.weapon] = true end
 	if r.skin then prof.skins[r.skin] = true end
 	local function att(w, a)
@@ -139,11 +145,12 @@ function Data.addXp(plr: Player, n: number, raw: boolean?)
 	local prof = profiles[plr]
 	if not prof then return end
 	local run = getRun(plr)
-	if not raw and run then n *= (Config.Difficulty[run.diff] or Config.Difficulty.normal).reward end
+	if not raw and run then n *= (Config.Difficulty[run.diff] or Config.Difficulty.normal).reward * Stats.prestigeMult(prof) end
 	n = math.floor(n + 0.5)
 	if n <= 0 then return end
 	prof.xp += n
 	if run and run.active then run.xp += n end
+	Data.addPassXp(plr, n)
 	while prof.xp >= Stats.xpForLevel(prof.level) do
 		prof.xp -= Stats.xpForLevel(prof.level)
 		prof.level += 1
@@ -154,6 +161,130 @@ function Data.addXp(plr: Player, n: number, raw: boolean?)
 		toast(plr, "Level " .. prof.level, Stats.rewardText(r), "level")
 	end
 	Data.markDirty(plr)
+end
+
+---------------------------------------------------------------- the grind loop: candy, event pass, prestige, login streak
+function Data.addCandy(plr: Player, n: number): number
+	local prof = profiles[plr]
+	n = math.floor(n + 0.5)
+	if not prof or n <= 0 then return 0 end
+	prof.candy = (prof.candy or 0) + n
+	local run = getRun(plr)
+	if run and run.active then run.candy = (run.candy or 0) + n end
+	Data.markDirty(plr)
+	return n
+end
+
+function Data.spendCandy(plr: Player, n: number): boolean
+	local prof = profiles[plr]
+	if not prof or (prof.candy or 0) < n then return false end
+	prof.candy -= n
+	Data.markDirty(plr)
+	return true
+end
+
+-- every point of XP also fills the event pass; each new tier pays out straight away
+function Data.addPassXp(plr: Player, n: number)
+	local prof = profiles[plr]
+	if not prof then return end
+	prof.pass = prof.pass or { xp = 0, tier = 0 }
+	if (prof.pass.tier or 0) >= Config.Pass.tiers then return end
+	prof.pass.xp += n
+	local tier = Stats.passTier(prof)
+	while (prof.pass.tier or 0) < tier do
+		prof.pass.tier = (prof.pass.tier or 0) + 1
+		local r = Config.Pass.reward(prof.pass.tier)
+		Data.grant(plr, r)
+		toast(plr, "Event pass tier " .. prof.pass.tier, Stats.rewardText(r), "level")
+		local run = getRun(plr)
+		if run and run.active then table.insert(run.drops, "Pass tier " .. prof.pass.tier) end
+	end
+end
+
+-- prestige: trade the level cap for a permanent multiplier and an exclusive finish. Weapons, skins and upgrades stay.
+function Data.prestige(plr: Player): (boolean, string)
+	local prof = profiles[plr]
+	if not prof then return false, "No profile" end
+	local P = Config.Prestige
+	if (prof.prestige or 0) >= P.max then return false, "Maximum prestige reached" end
+	if prof.level < P.level then return false, "Reach level " .. P.level .. " to prestige" end
+	local run = getRun(plr)
+	if run and run.deployed then return false, "Finish your run first" end
+	prof.prestige = (prof.prestige or 0) + 1
+	prof.level, prof.xp = 1, 0
+	local r = P.rewards[prof.prestige] or P.later
+	Data.grant(plr, r)
+	toast(plr, "Prestige " .. prof.prestige, string.format("+%d%% coins and XP forever · %s", math.floor((Stats.prestigeMult(prof) - 1) * 100 + 0.5), Stats.rewardText(r)), "level")
+	Data.markDirty(plr)
+	return true, "Prestige " .. prof.prestige
+end
+
+-- daily login streak: consecutive UTC days climb a 7-day reward ladder that then repeats
+function Data.dailyLogin(plr: Player)
+	local prof = profiles[plr]
+	if not prof then return end
+	local today = os.date("!%Y-%m-%d")
+	local L = prof.login or { day = "", streak = 0, best = 0 }
+	prof.login = L
+	if L.day == today then return end
+	local yesterday = os.date("!%Y-%m-%d", os.time() - 86400)
+	L.streak = L.day == yesterday and L.streak + 1 or 1
+	L.best = math.max(L.best or 0, L.streak)
+	L.day = today
+	local r = Config.LoginRewards[(L.streak - 1) % #Config.LoginRewards + 1]
+	Data.grant(plr, r)
+	toast(plr, "Daily login · day " .. L.streak, Stats.rewardText(r), "drop")
+	Data.markDirty(plr)
+end
+
+---------------------------------------------------------------- Halloween quests and the Reaper's Contract
+local function bumpContract(plr, prof, step: string, amount: number, max: boolean?)
+	local c = prof.contract
+	if c.done then return end
+	local st
+	for _, x in ipairs(Config.Halloween.Contract) do if x.id == step then st = x end end
+	local before = c[step] or 0
+	c[step] = max and math.max(before, amount) or before + amount
+	if before < st.goal and c[step] >= st.goal then toast(plr, "Reaper's Contract", "Step complete: " .. st.name, "quest") end
+	for _, x in ipairs(Config.Halloween.Contract) do if (c[x.id] or 0) < x.goal then return end end
+	c.done = true
+	prof.weapons.reaper = true
+	Remotes.Banner:FireClient(plr, "Reaper's Eye unlocked", "The contract is sealed. Equip it in the Armory.", "boss", false)
+	toast(plr, "Reaper's Eye", "Event sniper with Fever and a built-in scope", "drop")
+	local run = getRun(plr)
+	if run and run.active then table.insert(run.drops, "Reaper's Eye") end
+end
+
+local function halloweenEvent(plr, prof, ev: string, amount: number, extra)
+	if not Stats.halloweenActive() then return end
+	local run = getRun(plr)
+	local night = run ~= nil and run.mode == "halloween"
+	for _, q in ipairs(Config.Halloween.Quests) do
+		local st = prof.hq[q.id] or { p = 0, done = false }
+		prof.hq[q.id] = st
+		if not st.done then
+			local add = 0
+			if q.kind or q.kinds then
+				if ev == "killType" and night and (q.kind == extra.kind or (q.kinds and table.find(q.kinds, extra.kind))) then add = amount end
+			elseif q.ev == ev then
+				add = amount
+			end
+			if add > 0 then
+				st.p = q.max and math.max(st.p, add) or st.p + add
+				if st.p >= q.goal then
+					st.p, st.done = q.goal, true
+					Data.addCandy(plr, q.candy)
+					if run and run.active then table.insert(run.questsDone, q.name) end
+					toast(plr, "Trick or treat: " .. q.name, q.candy .. " candy corn", "quest")
+				end
+			end
+		end
+	end
+	if not night then return end
+	if ev == "kill" then bumpContract(plr, prof, "souls", amount)
+	elseif ev == "headshot" then bumpContract(plr, prof, "heads", amount)
+	elseif ev == "nightWave" then bumpContract(plr, prof, "wave", amount, true)
+	elseif ev == "dracula" then bumpContract(plr, prof, "dracula", amount) end
 end
 
 -- daily challenges rotate each UTC day, seeded so every server agrees
@@ -179,6 +310,7 @@ function Data.questEvent(plr: Player, ev: string, amountIn: number?, extraIn: an
 	local amount: number = amountIn or 1
 	local extra = extraIn or {}
 	local run = getRun(plr)
+	halloweenEvent(plr, prof, ev, amount, extra)
 	for _, q in ipairs(Config.Quests) do
 		if q.ev == ev then
 			local st = prof.quests[q.id] or { p = 0, done = false }
@@ -226,7 +358,7 @@ end
 function Data.recordScore(plr: Player, entry): number
 	local prof = profiles[plr]
 	if not prof then return -1 end
-	local key = entry.map .. "|" .. entry.diff
+	local key = entry.map .. "|" .. entry.diff .. (entry.mode == "halloween" and "|night" or "")
 	local list = prof.board[key] or {}
 	prof.board[key] = list
 	table.insert(list, entry)

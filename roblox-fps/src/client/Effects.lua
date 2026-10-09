@@ -97,6 +97,9 @@ local PRESET = {
 	warp = { Texture = Config.Textures.Spark, Color = CS(RGB(160, 220, 255), RGB(30, 90, 255)), LightEmission = 1, Size = NS(0.7, 0), Lifetime = NumberRange.new(0.4, 0.9), Speed = NumberRange.new(8, 30), SpreadAngle = Vector2.new(15, 15) },
 	glow = { Texture = Config.Textures.Spark, Color = CS(RGB(255, 255, 255), RGB(255, 255, 255)), LightEmission = 1, Size = NS(2, 0), Lifetime = NumberRange.new(0.12), Speed = NumberRange.new(0) },
 	stun = { Texture = Config.Textures.Spark, Color = CS(RGB(200, 240, 255), RGB(80, 160, 255)), LightEmission = 1, Size = NS(1.2, 0), Lifetime = NumberRange.new(0.3, 0.8), Speed = NumberRange.new(30, 70), SpreadAngle = Vector2.new(180, 180), Drag = 4 },
+	bone = { Texture = Config.Textures.Smoke, Color = CS(RGB(236, 228, 204), RGB(170, 160, 140)), Size = NS(0.5, 0.2), Lifetime = NumberRange.new(0.5, 1.0), Speed = NumberRange.new(14, 34), SpreadAngle = Vector2.new(70, 70), Acceleration = V(0, -80, 0), Drag = 1 },
+	ecto = { Texture = Config.Textures.Spark, Color = CS(RGB(150, 255, 200), RGB(60, 200, 160)), LightEmission = 1, Size = NS(0.9, 0), Lifetime = NumberRange.new(0.4, 1.0), Speed = NumberRange.new(6, 22), SpreadAngle = Vector2.new(180, 180), Drag = 2, Acceleration = V(0, 20, 0) },
+	gore = { Texture = Config.Textures.Smoke, Color = CS(RGB(160, 16, 24), RGB(70, 8, 12)), Size = NS(0.6, 0.2), Lifetime = NumberRange.new(0.4, 0.8), Speed = NumberRange.new(10, 30), SpreadAngle = Vector2.new(60, 60), Acceleration = V(0, -80, 0) },
 	coin = { Texture = Config.Textures.Spark, Color = CS(RGB(255, 230, 120), RGB(255, 180, 40)), LightEmission = 1, Size = NS(0.6, 0.2), Lifetime = NumberRange.new(0.5, 0.9), Speed = NumberRange.new(12, 26), SpreadAngle = Vector2.new(50, 50), Acceleration = V(0, -60, 0) },
 }
 
@@ -233,6 +236,9 @@ local STYLE = {
 	heavy = { RGB(255, 120, 40), V(0.6, 0.6, 5) },
 	drone = { RGB(64, 255, 208), V(0.3, 0.3, 3) },
 	snipe = { RGB(255, 42, 106), V(0.25, 0.25, 12) },
+	arrow = { RGB(236, 228, 204), V(0.18, 0.18, 4.5) },
+	hex = { RGB(150, 255, 90), V(0.5, 0.5, 2.5) },
+	blood = { RGB(255, 36, 52), V(0.4, 0.4, 2.5) },
 }
 function Effects.bolt(id, origin, vel, style)
 	local st = STYLE[style] or STYLE.bolt
@@ -388,6 +394,20 @@ function Effects.warp(pos, kind)
 end
 
 function Effects.botDeath(pos, kind, pop)
+	local k = Config.Enemies[kind]
+	if k and k.event then
+		-- monsters burst into bone, ectoplasm, blood or pumpkin pulp instead of sparks
+		local look = k.look
+		if look == "skeleton" then Effects.burst("bone", pos, nil, pop and 30 or 18)
+		elseif look == "ghost" or look == "witch" then Effects.burst("ecto", pos, nil, 30)
+		elseif look == "pumpkin" then Effects.burst("bone", pos, nil, 20, RGB(232, 118, 28))
+		else Effects.burst("gore", pos, nil, pop and 26 or 16) end
+		Effects.burst("smoke", pos, nil, 3, look == "ghost" and RGB(200, 240, 230) or RGB(60, 40, 70))
+		flashLight(pos, k.glow, 18, 2, 0.3)
+		Effects.sound("slash", pos, { pitch = 0.6, volume = 0.8 })
+		if pop then Effects.sound("headshot", pos, { pitch = 0.7, volume = 1.2 }) end
+		return
+	end
 	Effects.burst("elec", pos, nil, 30)
 	Effects.burst("spark", pos, nil, pop and 40 or 20)
 	Effects.burst("smoke", pos, nil, kind == "tank" and 10 or 5)
@@ -436,10 +456,11 @@ end
 local NUM = {
 	normal = { RGB(235, 240, 244), 18 }, kill = { RGB(255, 255, 255), 22 }, head = { Config.Colors.Head, 24 },
 	weak = { Config.Colors.Weak, 22 }, block = { Config.Colors.Block, 16 }, coin = { Config.Colors.Coin, 18 },
+	candy = { RGB(255, 178, 56), 20 },
 }
 function Effects.damageNumber(pos: Vector3, text: any, kind: string)
 	local suffix = if kind == "head" then "!" else ""
-	if not Effects.numbers and kind ~= "coin" then return end
+	if not Effects.numbers and kind ~= "coin" and kind ~= "candy" then return end
 	local st = NUM[kind] or NUM.normal
 	local a = Instance.new("Attachment")
 	a.WorldPosition = pos + V(rand(-0.8, 0.8), rand(0.5, 1.5), rand(-0.8, 0.8))
@@ -475,6 +496,11 @@ function Effects.coins(pos, count, amount)
 		table.insert(coins, { p = p, pos = pos, vel = V(rand(-12, 12), rand(18, 30), rand(-12, 12)), t = 0, delay = rand(0.25, 0.45) })
 	end
 	if amount then Effects.damageNumber(pos + V(0, 2, 0), "+" .. amount, "coin") end
+end
+
+function Effects.candy(pos, amount)
+	Effects.burst("coin", pos, Vector3.yAxis, 8, RGB(255, 150, 30))
+	if amount and amount > 0 then Effects.damageNumber(pos + V(0, 3, 0), "+" .. amount .. " candy", "candy") end
 end
 
 ---------------------------------------------------------------- stations

@@ -26,7 +26,7 @@ local function setState(k, v) if State:GetAttribute(k) ~= v then State:SetAttrib
 
 local run = {
 	running = false, wave = 0, queue = {}, spawnT = 0, active = false, inter = 0, start = 0, overT = 0,
-	diff = "normal", mapId = "yard", mutator = nil, lastMutator = nil, boss = nil, bossPending = 0, isBoss = false,
+	diff = "normal", mapId = "yard", mode = "standard", mutator = nil, lastMutator = nil, boss = nil, bossPending = 0, isBoss = false,
 }
 local pdata: { [Player]: any } = {}
 local map
@@ -83,6 +83,7 @@ local function snapshot(plr)
 		combo = pr.combo, comboT = pr.comboT, bestCombo = pr.bestCombo, mults = roundMults(pr),
 		coins = pr.coins, xp = pr.xp, buffs = pr.buffs, powerups = pr.powerups, oc = pr.oc,
 		killstreak = pr.killstreak, airstrikes = pr.airstrikes, turrets = pr.turrets, offer = pr.offer, ready = pr.ready,
+		mode = run.mode, candy = pr.candy or 0, fever = pr.fever or 0, feverT = pr.feverT or 0,
 	}
 end
 
@@ -132,6 +133,7 @@ local function newRun(plr)
 	pr.active = true
 	pr.waveHurt, pr.bossHurt = false, false
 	pr.offer, pr.ready, pr.rolling = nil, false, false
+	pr.mode, pr.candy, pr.fever, pr.feverT = run.mode, 0, 0, 0
 	for _, id in ipairs(pr.slots) do fillWeapon(plr, id) end
 	plr:SetAttribute("Armor", Config.Player.StartArmor)
 	local ls = plr:FindFirstChild("leaderstats")
@@ -147,7 +149,7 @@ local function rollRareDrop(prof)
 	for _, w in ipairs(Config.Weapons) do
 		if prof.weapons[w.id] then
 			for _, a in ipairs(Config.AttachmentOrder) do
-				if not Stats.attOwned(prof, w.id, a) then table.insert(pool, { r = { att = { w.id, a } }, wt = 6 }) end
+				if not Stats.attOwned(prof, w.id, a) and not (w.event and a == "reddot") then table.insert(pool, { r = { att = { w.id, a } }, wt = 6 }) end
 			end
 		end
 	end
@@ -155,7 +157,7 @@ local function rollRareDrop(prof)
 		if not prof.skins[s] then table.insert(pool, { r = { skin = s }, wt = s == "scorch" and 6 or 2 }) end
 	end
 	for _, w in ipairs(Config.Weapons) do
-		if not prof.weapons[w.id] and w.id ~= "plasma" then table.insert(pool, { r = { weapon = w.id }, wt = 1.5 }) end
+		if not prof.weapons[w.id] and w.id ~= "plasma" and not w.event then table.insert(pool, { r = { weapon = w.id }, wt = 1.5 }) end
 	end
 	if #pool == 0 then return { coins = 1000, xp = 800 } end
 	local tot = 0
@@ -183,6 +185,20 @@ local function onBossKilled(boss, pos)
 			local drop = rollRareDrop(prof)
 			Data.grant(plr, drop)
 			local txt = Stats.rewardText(drop)
+			if boss.kind == "dracula" then
+				Data.questEvent(plr, "dracula")
+				local H = Config.Halloween
+				local candy = Data.addCandy(plr, H.CandyBossBase + H.CandyBossCycle * (boss.cycle - 1))
+				txt ..= " · " .. candy .. " candy corn"
+				if not prof.weapons.fang then
+					prof.fangPity = (prof.fangPity or 0) + 1
+					if rng:NextNumber() < H.FangChance or prof.fangPity >= H.FangPity then
+						prof.weapons.fang = true
+						txt = "Vampire's Fang! · " .. txt
+						Remotes.Banner:FireClient(plr, "Vampire's Fang", "Dracula dropped his shotgun: lifesteal and a built-in holo sight", "boss", true)
+					end
+				end
+			end
 			table.insert(pr.drops, txt)
 			toast(plr, "Rare drop", txt, "drop")
 			Remotes.Banner:FireClient(plr, boss.name .. " destroyed", "+" .. coins .. " coins · " .. txt, "clear", true)
@@ -224,7 +240,26 @@ local function onKill(e, info, pos)
 	pr.combo += 1
 	pr.comboT = Config.ComboWindow
 	pr.bestCombo = math.max(pr.bestCombo, pr.combo)
-	if not e.boss then Data.questEvent(plr, "killType", 1, { type = e.kind }) end
+	if not e.boss then Data.questEvent(plr, "killType", 1, { type = e.kind, kind = e.kind }) end
+	-- Fever (Reaper's Eye in the loadout): kills within the window stack damage; a Reaper kill refunds a round
+	if table.find(pr.slots, "reaper") then
+		local F = Config.Halloween.Fever
+		pr.fever = math.min(F.max, (pr.fever or 0) + 1)
+		pr.feverT = F.window
+		if weapon == "reaper" then
+			local s = weaponStats(plr, "reaper")
+			if pr.mags.reaper and pr.mags.reaper < s.mag then pr.mags.reaper += 1 end
+		end
+		if pr.fever == F.max then toast(plr, "Fever: maximum", string.format("+%d%% Reaper's Eye damage", math.floor(F.max * F.per * 100 + 0.5)), "buff") end
+	end
+	-- candy corn: every kill in Night of Terror, an occasional piece elsewhere while the event runs
+	if Stats.halloweenActive() and not e.boss then
+		local H = Config.Halloween
+		local n = 0
+		if run.mode == "halloween" then n = math.max(1, math.floor(e.k.coins / H.CandyPerCoins + 0.5)) + (head and 1 or 0)
+		elseif rng:NextNumber() < H.StandardChance then n = 1 end
+		if n > 0 then Remotes.FX:FireClient(plr, "candy", pos, Data.addCandy(plr, n)) end
+	end
 	Data.questEvent(plr, "combo", pr.combo)
 	pr.killstreak += 1
 	if pr.killstreak == Config.Killstreak.Airstrike then
@@ -245,9 +280,9 @@ local function onKill(e, info, pos)
 		Remotes.FX:FireClient(plr, "coins", pos, math.ceil(got / 5), got)
 		Data.addXp(plr, (k.xp + (head and 10 or 0)) * rm.xp)
 		pr.score += math.floor((k.score + (head and 50 or 0)) * rm.total + 0.5)
-		if e.kind ~= "exploder" then
+		if e.ai ~= "exploder" then
 			local r = rng:NextNumber()
-			if e.kind == "tank" or r < 0.12 then Combat.spawnPickup("health", pos)
+			if e.ai == "tank" or r < 0.12 then Combat.spawnPickup("health", pos)
 			elseif r < 0.36 then Combat.spawnPickup("ammo", pos)
 			elseif r < 0.41 then Combat.spawnPickup("armor", pos)
 			elseif r < 0.46 then Combat.spawnPickup(({ "pu_damage", "pu_speed", "pu_ammo" })[rng:NextInteger(1, 3)], pos) end
@@ -298,7 +333,7 @@ local function crate(plr)
 	if not run.running or not pr or not pr.deployed or pr.rolling or not aliveChar(plr) then return end
 	local pool = {}
 	for _, w in ipairs(Config.Weapons) do
-		if not table.find(pr.slots, w.id) then table.insert(pool, { id = w.id, wt = w.id == "plasma" and 0.6 or (w.price >= 2200 and 1 or 1.3) }) end
+		if not table.find(pr.slots, w.id) and not w.event then table.insert(pool, { id = w.id, wt = w.id == "plasma" and 0.6 or (w.price >= 2200 and 1 or 1.3) }) end
 	end
 	if #pool == 0 then return end
 	if not Data.spend(plr, Config.CrateCost) then
@@ -368,12 +403,13 @@ local function composeWave(w)
 	local d = Config.Difficulty[run.diff]
 	local isBoss = w % 5 == 0
 	local mu = run.mutator and Config.Mutators[run.mutator] or {}
+	local order = run.mode == "halloween" and Config.HEnemyOrder or Config.EnemyOrder
 	local count = math.floor((isBoss and 3 + w * 0.5 or 5 + w * 2) * d.count * (mu.count or 1) * (1 + 0.5 * (deployedCount() - 1)) + 0.5)
 	count = math.min(count, 44)
 	local caps = { tank = w >= 6 and 1 + math.floor((w - 6) / 4) or 0, sniper = 1 + math.floor(w / 4), shield = 1 + math.floor(w / 3), exploder = 2 + math.floor(w / 3) }
 	local q, counts = {}, {}
 	local avail = {}
-	for _, kind in ipairs(Config.EnemyOrder) do
+	for _, kind in ipairs(order) do
 		local k = Config.Enemies[kind]
 		if k.from <= w then table.insert(avail, kind) end
 		if k.from == w and not isBoss then table.insert(q, kind); counts[kind] = 1 end
@@ -385,7 +421,8 @@ local function composeWave(w)
 	while #q < count do
 		local pool, tot = {}, 0
 		for _, kind in ipairs(avail) do
-			if caps[kind] == nil or (counts[kind] or 0) < caps[kind] then table.insert(pool, kind); tot += weight(kind) end
+			local cap = caps[Config.Enemies[kind].ai or kind]
+			if cap == nil or (counts[kind] or 0) < cap then table.insert(pool, kind); tot += weight(kind) end
 		end
 		local r, pick = rng:NextNumber() * tot, pool[1]
 		for _, kind in ipairs(pool) do
@@ -432,7 +469,7 @@ local function startWave()
 	setState("Wave", w)
 	setState("Active", true)
 	if isBoss then
-		local def = Bosses.forWave(w)
+		local def = Bosses.forWave(w, run.mode)
 		for _, pr in pairs(pdata) do pr.bossHurt = false end
 		banner(def.name, def.title .. " · boss wave " .. w, "boss", true)
 	else
@@ -446,7 +483,7 @@ local function startWave()
 		else
 			banner("Wave " .. w, string.format("%d hostiles · x%.1f wave multiplier", #q, wm), "siren")
 		end
-		for _, kind in ipairs(Config.EnemyOrder) do
+		for _, kind in ipairs(run.mode == "halloween" and Config.HEnemyOrder or Config.EnemyOrder) do
 			local k = Config.Enemies[kind]
 			if k.from == w and Config.EnemyTips[kind] then
 				for plr, pr in pairs(pdata) do if pr.deployed then toast(plr, "New threat: " .. k.name, Config.EnemyTips[kind], "threat") end end
@@ -485,6 +522,7 @@ local function waveCleared()
 			end
 			prof.stats.bestWave = math.max(prof.stats.bestWave, w)
 			Data.questEvent(plr, "wave", w)
+			if run.mode == "halloween" then Data.questEvent(plr, "nightWave", w) end
 			pr.score += 250 * w
 			plr:SetAttribute("Armor", math.min(Config.Player.MaxArmor, (plr:GetAttribute("Armor") or 0) + 15))
 			pr.frags = math.min(Config.Player.MaxFrags, pr.frags + 1)
@@ -517,14 +555,17 @@ local function clearWorld()
 	for _, t in ipairs(map.drumTemplates) do t:Clone().Parent = map.drumFolder end
 end
 
-local function startRun(mapId, diff)
+local function startRun(mapId, diff, mode)
 	if mapId ~= run.mapId then buildMap(mapId) end
+	run.mode = mode
+	setState("Mode", mode)
+	MapBuilder.setHalloween(mode == "halloween")
 	clearWorld()
 	run.running, run.wave, run.queue, run.active, run.inter, run.start, run.overT = true, 0, {}, false, 6, os.clock(), 0
 	run.diff, run.mutator, run.lastMutator = diff, nil, nil
 	setState("Running", true); setState("Wave", 0); setState("Diff", diff); setState("Mutator", "")
 	MapBuilder.setBlackout(false)
-	banner(map.name, Config.Difficulty[diff].label .. " · first wave in 6 seconds", "start", false)
+	banner(mode == "halloween" and "Night of Terror" or map.name, (mode == "halloween" and (map.name .. " · ") or "") .. Config.Difficulty[diff].label .. " · first wave in 6 seconds", "start", false)
 end
 
 local function endRun()
@@ -538,14 +579,14 @@ local function endRun()
 			local prof = Data.get(plr)
 			prof.stats.runs += 1
 			prof.stats.bestScore = math.max(prof.stats.bestScore, pr.score)
-			local entry = { score = pr.score, wave = run.wave, kills = pr.kills, map = run.mapId, diff = run.diff, date = os.date("!%Y-%m-%d") }
+			local entry = { score = pr.score, wave = run.wave, kills = pr.kills, map = run.mapId, diff = run.diff, mode = run.mode, date = os.date("!%Y-%m-%d") }
 			local rank = Data.recordScore(plr, entry)
 			Data.markDirty(plr)
 			Remotes.GameOver:FireClient(plr, {
 				score = pr.score, wave = run.wave, kills = pr.kills, heads = pr.heads, time = duration,
 				acc = pr.shots > 0 and math.floor(pr.hits / pr.shots * 100 + 0.5) or 0,
 				coins = pr.coins, xp = pr.xp, levels = pr.levelsGained, quests = pr.questsDone, drops = pr.drops,
-				bestCombo = pr.bestCombo, rank = rank, map = run.mapId, diff = run.diff,
+				bestCombo = pr.bestCombo, rank = rank, map = run.mapId, diff = run.diff, mode = run.mode, candy = pr.candy or 0,
 			})
 			pr.deployed = false
 			pr.active = false
@@ -566,7 +607,7 @@ local function updateWaves(dt)
 		if run.bossPending > 0 then
 			run.bossPending -= dt
 			if run.bossPending <= 0 then
-				run.boss = Bosses.spawn(run.wave, farSpawn(), deployedCount())
+				run.boss = Bosses.spawn(run.wave, farSpawn(), deployedCount(), run.mode)
 			end
 		end
 		run.spawnT -= dt
@@ -666,15 +707,16 @@ Players.PlayerRemoving:Connect(function(p)
 end)
 
 ---------------------------------------------------------------- remotes
-Remotes.Deploy.OnServerEvent:Connect(function(plr, mapId, diff)
+Remotes.Deploy.OnServerEvent:Connect(function(plr, mapId, diff, mode)
 	local pr = pdata[plr]
 	local prof = Data.get(plr)
 	if not pr or not prof or pr.deployed then return end
 	if not run.running then
 		if typeof(mapId) ~= "string" or not Config.MapById[mapId] or not Stats.mapUnlocked(prof, mapId) then mapId = "yard" end
 		if typeof(diff) ~= "string" or not Config.Difficulty[diff] then diff = "normal" end
-		prof.map, prof.difficulty = mapId, diff
-		startRun(mapId, diff)
+		if mode ~= "halloween" or not Stats.halloweenActive() then mode = "standard" end
+		prof.map, prof.difficulty, prof.mode = mapId, diff, mode
+		startRun(mapId, diff, mode)
 	end
 	pr.deployed = true
 	newRun(plr)
@@ -836,6 +878,7 @@ local function shop(plr, req)
 	local w = typeof(req.id) == "string" and Config.WeaponById[req.id] or nil
 	if t == "buyWeapon" then
 		if not w then return false, "Unknown weapon" end
+		if w.event then return false, "Event weapon: earn it in Night of Terror" end
 		if prof.weapons[w.id] then return false, "Already owned" end
 		if prof.level < w.level then return false, "Reach level " .. w.level end
 		if not Data.spend(plr, w.price) then return false, "Not enough coins" end
@@ -845,6 +888,7 @@ local function shop(plr, req)
 		local a = typeof(req.att) == "string" and Config.Attachments[req.att]
 		if not w or not a or not prof.weapons[w.id] then return false, "Unavailable" end
 		if Stats.attOwned(prof, w.id, req.att) then return false, "Already owned" end
+		if w.event and req.att == "reddot" then return false, "This weapon has a built-in optic" end
 		if not Data.spend(plr, a.price) then return false, "Not enough coins" end
 		Data.grant(plr, { att = { w.id, req.att } })
 		return true, a.name .. " fitted"
@@ -865,7 +909,9 @@ local function shop(plr, req)
 		Data.markDirty(plr)
 		return true, u.name .. " level " .. (lvl + 1)
 	elseif t == "skin" then
-		if not w or typeof(req.skin) ~= "string" or not prof.skins[req.skin] then return false, "Skin locked" end
+		if not w or typeof(req.skin) ~= "string" or not Stats.skinFits(req.skin, w.id) then return false, "Skin does not fit" end
+		local def = Config.WeaponById[w.id]
+		if not prof.skins[req.skin] and def.defaultSkin ~= req.skin then return false, "Skin locked" end
 		prof.skin[w.id] = req.skin
 		Data.markDirty(plr)
 		return true, Config.Skins[req.skin].name .. " applied"
@@ -876,6 +922,18 @@ local function shop(plr, req)
 		prof.loadout[req.slot] = w.id
 		Data.markDirty(plr)
 		return true, w.name .. " equipped"
+	elseif t == "buySkin" then
+		local sk = typeof(req.skin) == "string" and Config.Skins[req.skin]
+		if not w or not sk or not sk.candy or sk.candy <= 0 or not Stats.skinFits(req.skin, w.id) then return false, "Unavailable" end
+		if prof.skins[req.skin] then return false, "Already owned" end
+		if not Stats.halloweenActive() then return false, "The Halloween event has ended" end
+		if not Data.spendCandy(plr, sk.candy) then return false, "Not enough candy corn" end
+		prof.skins[req.skin] = true
+		if prof.weapons[w.id] then prof.skin[w.id] = req.skin end
+		Data.markDirty(plr)
+		return true, sk.name .. " unlocked"
+	elseif t == "prestige" then
+		return Data.prestige(plr)
 	elseif t == "sync" then
 		Data.sync(plr)
 		markRun(plr)
@@ -883,6 +941,7 @@ local function shop(plr, req)
 	elseif t == "prefs" then
 		if typeof(req.map) == "string" and Config.MapById[req.map] then prof.map = req.map end
 		if typeof(req.diff) == "string" and Config.Difficulty[req.diff] then prof.difficulty = req.diff end
+		if req.mode == "standard" or req.mode == "halloween" then prof.mode = req.mode end
 		Data.markDirty(plr)
 		return true, ""
 	elseif t == "supply" then
@@ -943,6 +1002,14 @@ RunService.Heartbeat:Connect(function(dt)
 				if pr.comboT <= 0 then pr.combo = 0; pr.comboT = 0; markRun(plr) end
 			end
 			if pr.multiT > 0 then pr.multiT -= dt end
+			if (pr.feverT or 0) > 0 then
+				pr.feverT -= dt
+				if pr.feverT <= 0 then
+					if pr.fever >= 3 then toast(plr, "Fever faded", "Five seconds without a kill", "deny") end
+					pr.feverT, pr.fever = 0, 0
+					markRun(plr)
+				end
+			end
 			for k, v in pairs(pr.powerups) do
 				if v > 0 then
 					pr.powerups[k] = math.max(0, v - dt)

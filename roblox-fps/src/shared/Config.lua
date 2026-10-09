@@ -34,6 +34,12 @@ Config.Weapons = {
 	{ id = "lmg", name = "Anvil HX", short = "HX", cls = "Light machine gun", mode = "AUTO", fire = "auto", dmg = 23, rpm = 600, mag = 80, reserve = 320, reload = 4.0, spread = 1.83, adsSpread = 0.57, recoil = 0.69, kick = 0.11, range = 560, head = 2, pellets = 1, zoom = 0.75, adsSpeed = 6, move = 0.88, price = 3000, level = 10, upCost = 140, sound = "lmg", flashSize = 1.8 },
 	{ id = "sniper", name = "Longreach R2", short = "R2", cls = "Marksman rifle", mode = "BOLT", fire = "semi", bolt = true, dmg = 120, rpm = 48, mag = 5, reserve = 35, reload = 2.7, spread = 4.0, adsSpread = 0, recoil = 3.4, kick = 0.4, range = 1400, head = 3, pellets = 1, zoom = 0.24, scope = true, adsSpeed = 6, move = 0.95, price = 2200, level = 7, upCost = 140, sound = "sniper", flashSize = 2.6 },
 	{ id = "plasma", name = "Helion PX", short = "PX", cls = "Plasma rifle", mode = "AUTO", fire = "auto", projectile = true, projSpeed = 273, splash = 8.4, dmg = 36, rpm = 360, mag = 40, reserve = 200, reload = 2.4, spread = 0.69, adsSpread = 0.23, recoil = 0.57, kick = 0.11, range = 560, head = 2, pellets = 1, zoom = 0.78, adsSpeed = 9, move = 1, price = 5000, level = 14, upCost = 170, sound = "plasma", flashSize = 1.8, flashColor = Color3.fromRGB(108, 246, 255) },
+	-- Halloween event weapons: never sold, never in the crate. Reaper's Eye comes from the Reaper's Contract quest,
+	-- Vampire's Fang drops from Dracula. Both carry a built-in optic and a special perk.
+	{ id = "reaper", name = "Reaper's Eye", short = "REAP", cls = "Event marksman rifle", mode = "BOLT", fire = "semi", bolt = true, dmg = 145, rpm = 62, mag = 6, reserve = 42, reload = 2.4, spread = 4.0, adsSpread = 0, recoil = 3.0, kick = 0.38, range = 1500, head = 3, pellets = 1, zoom = 0.2, scope = true, adsSpeed = 7, move = 0.97, price = 0, level = 1, upCost = 160, sound = "sniper", flashSize = 2.4, flashColor = Color3.fromRGB(154, 255, 106), event = "halloween", special = "fever", defaultSkin = "reaper_soul",
+		perks = { "Fever: every kill within 5 s of the last stacks +12% damage (max 10). The streak fades after 5 s without a kill.", "Fever also raises fire rate 30% and refunds a round on each kill.", "Built-in Soulglass scope with 5x zoom." } },
+	{ id = "fang", name = "Vampire's Fang", short = "FANG", cls = "Event combat shotgun", mode = "SEMI", fire = "semi", dmg = 15, rpm = 150, mag = 8, reserve = 56, reload = 0.42, shellReload = true, spread = 3.6, adsSpread = 2.4, recoil = 2.6, kick = 0.36, range = 210, falloff = { 42, 140 }, head = 2, pellets = 9, zoom = 0.85, adsSpeed = 11, move = 1.02, price = 0, level = 1, upCost = 140, sound = "shotgun", flashSize = 2.2, flashColor = Color3.fromRGB(255, 42, 58), event = "halloween", special = "lifesteal", builtinSight = true, defaultSkin = "fang_blood",
+		perks = { "Lifesteal: heal for 12% of all damage dealt.", "Thirst: +25% damage while below half health.", "Built-in blood-red holo sight and semi-auto action." } },
 }
 Config.WeaponById = {}
 for i, w in ipairs(Config.Weapons) do
@@ -59,7 +65,54 @@ Config.Skins = {
 	scorch = { name = "Scorch", metal = Color3.fromRGB(42, 42, 42), poly = Color3.fromRGB(58, 42, 32), alt = Color3.fromRGB(90, 58, 32), accent = Color3.fromRGB(255, 122, 46), glow = true, how = "Boss drop" },
 	gold = { name = "Gilded", metal = Color3.fromRGB(212, 169, 58), poly = Color3.fromRGB(27, 30, 33), alt = Color3.fromRGB(201, 160, 58), accent = Color3.fromRGB(255, 240, 176), shiny = true, how = "Quest: Untouchable or level 20" },
 }
-Config.SkinOrder = { "stock", "desert", "arctic", "crimson", "circuit", "scorch", "gold" }
+Config.SkinOrder = { "stock", "desert", "arctic", "crimson", "circuit", "scorch", "gold", "prestige1", "prestige3", "prestige5", "pass" }
+
+-- Prestige and event-pass finishes (earned by grinding, see Config.Prestige and Config.Pass)
+Config.Skins.prestige1 = { name = "Veteran Steel", metal = Color3.fromRGB(150, 160, 170), poly = Color3.fromRGB(34, 40, 48), alt = Color3.fromRGB(70, 80, 92), accent = Color3.fromRGB(120, 200, 255), glow = true, metalMat = Enum.Material.DiamondPlate, how = "Prestige 1" }
+Config.Skins.prestige3 = { name = "Obsidian", metal = Color3.fromRGB(20, 18, 26), poly = Color3.fromRGB(12, 10, 16), alt = Color3.fromRGB(40, 30, 60), accent = Color3.fromRGB(180, 90, 255), glow = true, polyMat = Enum.Material.Glass, how = "Prestige 3" }
+Config.Skins.prestige5 = { name = "Sunforged", metal = Color3.fromRGB(255, 190, 70), poly = Color3.fromRGB(60, 30, 10), alt = Color3.fromRGB(255, 120, 30), accent = Color3.fromRGB(255, 240, 180), glow = true, shiny = true, altMat = Enum.Material.CrackedLava, how = "Prestige 5" }
+Config.Skins.pass = { name = "Breach Elite", metal = Color3.fromRGB(30, 34, 40), poly = Color3.fromRGB(245, 165, 36), alt = Color3.fromRGB(30, 34, 40), accent = Color3.fromRGB(255, 255, 255), glow = true, polyMat = Enum.Material.Foil, how = "Event pass tier 40" }
+
+-- Halloween skins: three per gun, bought with candy corn while the event runs. Materials stand in for patterns.
+local HS = Enum.Material
+local function hs(key, gun, name, metal, poly, alt, accent, glow, price, mats)
+	Config.Skins[key] = { name = name, only = gun, candy = price, event = "halloween", metal = metal, poly = poly, alt = alt, accent = accent, glow = glow,
+		metalMat = mats[1], polyMat = mats[2], altMat = mats[3], how = price > 0 and (price .. " candy corn") or "Comes with the weapon" }
+	table.insert(Config.HSkinOrder, key)
+end
+Config.HSkinOrder = {}
+local R = Color3.fromRGB
+hs("pistol_pumpkin", "pistol", "Jack-o'-Pistol", R(40, 30, 20), R(232, 118, 28), R(60, 120, 40), R(255, 200, 60), true, 180, { HS.Metal, HS.Cobblestone, HS.Grass })
+hs("pistol_bone", "pistol", "Ossuary", R(230, 220, 192), R(36, 32, 30), R(200, 190, 160), R(120, 255, 140), true, 160, { HS.Marble, HS.Slate, HS.Marble })
+hs("pistol_web", "pistol", "Widow's Web", R(28, 28, 34), R(18, 18, 22), R(220, 220, 230), R(190, 70, 255), true, 140, { HS.Metal, HS.Fabric, HS.Fabric })
+hs("smg_candy", "smg", "Candy Corn", R(255, 240, 220), R(255, 150, 20), R(255, 220, 60), R(255, 255, 255), false, 200, { HS.SmoothPlastic, HS.SmoothPlastic, HS.SmoothPlastic })
+hs("smg_ghost", "smg", "Poltergeist", R(200, 230, 255), R(150, 210, 255), R(230, 245, 255), R(170, 255, 255), true, 220, { HS.Glass, HS.ForceField, HS.Glass })
+hs("smg_witch", "smg", "Hexwood", R(40, 26, 50), R(70, 44, 26), R(110, 60, 160), R(150, 255, 90), true, 180, { HS.Metal, HS.Wood, HS.WoodPlanks })
+hs("rifle_moon", "rifle", "Blood Moon", R(60, 10, 14), R(36, 8, 12), R(110, 16, 22), R(255, 70, 40), true, 260, { HS.Metal, HS.CrackedLava, HS.Basalt })
+hs("rifle_pumpkin", "rifle", "Pumpkin King", R(30, 20, 14), R(240, 120, 24), R(40, 26, 16), R(255, 210, 70), true, 240, { HS.Metal, HS.Cobblestone, HS.Wood })
+hs("rifle_grave", "rifle", "Graverobber", R(110, 110, 104), R(80, 84, 76), R(60, 50, 40), R(150, 255, 120), true, 200, { HS.Slate, HS.Granite, HS.Ground })
+hs("burst_hex", "burst", "Coven", R(40, 20, 60), R(24, 10, 36), R(90, 40, 130), R(200, 90, 255), true, 220, { HS.Metal, HS.Glass, HS.Fabric })
+hs("burst_stitch", "burst", "Patchwork", R(90, 100, 70), R(120, 130, 90), R(170, 120, 90), R(255, 80, 60), false, 180, { HS.Metal, HS.Fabric, HS.Leather })
+hs("burst_bone", "burst", "Skeleton Key", R(236, 226, 196), R(28, 26, 26), R(210, 200, 170), R(255, 140, 40), true, 200, { HS.Marble, HS.Slate, HS.Marble })
+hs("shotgun_flame", "shotgun", "Hellfire", R(30, 20, 18), R(80, 20, 10), R(255, 100, 20), R(255, 200, 60), true, 240, { HS.Metal, HS.CrackedLava, HS.CrackedLava })
+hs("shotgun_grave", "shotgun", "Gravedigger", R(90, 90, 86), R(70, 50, 34), R(110, 110, 104), R(140, 255, 120), true, 200, { HS.Slate, HS.WoodPlanks, HS.Granite })
+hs("shotgun_candy", "shotgun", "Trick or Treat", R(255, 240, 220), R(255, 120, 20), R(120, 40, 160), R(255, 230, 80), false, 180, { HS.SmoothPlastic, HS.SmoothPlastic, HS.SmoothPlastic })
+hs("lmg_ghost", "lmg", "Spectre", R(190, 225, 255), R(140, 200, 255), R(220, 240, 255), R(170, 255, 255), true, 260, { HS.Glass, HS.ForceField, HS.Glass })
+hs("lmg_moon", "lmg", "Harvest Moon", R(50, 30, 20), R(250, 160, 40), R(30, 20, 30), R(255, 230, 140), true, 240, { HS.Metal, HS.Sand, HS.Fabric })
+hs("lmg_bone", "lmg", "Charnel", R(236, 226, 196), R(60, 20, 20), R(210, 200, 170), R(255, 60, 40), true, 220, { HS.Marble, HS.Basalt, HS.Marble })
+hs("sniper_raven", "sniper", "Raven", R(20, 20, 26), R(14, 14, 20), R(40, 40, 54), R(255, 40, 60), true, 260, { HS.Metal, HS.Fabric, HS.Leather })
+hs("sniper_hex", "sniper", "Witch's Broom", R(60, 40, 24), R(90, 60, 30), R(60, 30, 80), R(150, 255, 90), true, 220, { HS.Metal, HS.Wood, HS.WoodPlanks })
+hs("sniper_moon", "sniper", "Lunar Eclipse", R(30, 30, 50), R(10, 10, 20), R(200, 200, 230), R(255, 220, 120), true, 240, { HS.Foil, HS.Glass, HS.Marble })
+hs("plasma_ghost", "plasma", "Ectoplasm", R(60, 200, 120), R(30, 120, 70), R(140, 255, 170), R(170, 255, 200), true, 280, { HS.Glass, HS.ForceField, HS.Neon })
+hs("plasma_pumpkin", "plasma", "Lantern Core", R(30, 20, 14), R(240, 120, 24), R(255, 190, 60), R(255, 230, 120), true, 260, { HS.Metal, HS.Cobblestone, HS.Neon })
+hs("plasma_blood", "plasma", "Sanguine", R(70, 10, 16), R(40, 6, 10), R(160, 20, 30), R(255, 50, 60), true, 240, { HS.Metal, HS.CrackedLava, HS.Glass })
+-- the event guns' own finishes
+hs("reaper_soul", "reaper", "Soulreaper", R(20, 20, 22), R(30, 28, 26), R(230, 224, 200), R(154, 255, 106), true, 0, { HS.Metal, HS.Slate, HS.Marble })
+hs("reaper_wraith", "reaper", "Wraithbone", R(220, 214, 190), R(40, 36, 34), R(90, 255, 180), R(90, 255, 180), true, 300, { HS.Marble, HS.Basalt, HS.ForceField })
+hs("fang_blood", "fang", "First Blood", R(40, 10, 14), R(110, 14, 22), R(255, 120, 120), R(255, 40, 50), true, 0, { HS.Metal, HS.CrackedLava, HS.Marble })
+hs("fang_night", "fang", "Nightwalker", R(16, 14, 22), R(40, 20, 60), R(200, 180, 230), R(200, 120, 255), true, 300, { HS.Foil, HS.Fabric, HS.Marble })
+hs("reaper_ember", "reaper", "Hellreaper", R(22, 16, 16), R(42, 14, 8), R(255, 110, 30), R(255, 140, 40), true, 300, { HS.Metal, HS.Basalt, HS.CrackedLava })
+hs("fang_moon", "fang", "Crimson Moon", R(20, 8, 8), R(42, 10, 16), R(255, 210, 120), R(255, 220, 130), true, 300, { HS.Foil, HS.CrackedLava, HS.Sand })
 
 Config.Upgrades = {
 	damage = { name = "Damage", per = 0.08, desc = "+8% damage per level" },
@@ -225,6 +278,75 @@ Config.Textures = {
 	Spark = "rbxasset://textures/particles/sparkles_main.dds",
 	Fire = "rbxasset://textures/particles/fire_main.dds",
 	Smoke = "rbxasset://textures/particles/smoke_main.dds",
+}
+
+---------------------------------------------------------------- Halloween event: Night of Terror
+-- Event mobs reuse the bot AI through `ai` and look different through `look`.
+local function hmob(kind, t) t.event = "halloween"; Config.Enemies[kind] = t end
+hmob("h_skeleton", { name = "Skeleton Archer", ai = "grunt", look = "skeleton", bolt = "arrow", hp = 80, speed = 15.4, scale = 0.95, color = Color3.fromRGB(230, 220, 192), glow = Color3.fromRGB(120, 255, 140), pref = { 35, 90 }, rate = { 1.6, 2.6 }, dmg = 8, acc = 0.03, boltSpeed = 160, coins = 10, xp = 20, score = 100, from = 1, weight = 10 })
+hmob("h_zombie", { name = "Zombie", ai = "runner", look = "zombie", hp = 90, speed = 19, scale = 1, color = Color3.fromRGB(122, 154, 104), glow = Color3.fromRGB(255, 60, 40), dmg = 12, coins = 9, xp = 18, score = 110, from = 1, weight = 7, melee = true })
+hmob("h_bat", { name = "Vampire Bat", ai = "drone", look = "bat", bolt = "blood", hp = 40, speed = 28, color = Color3.fromRGB(40, 30, 40), glow = Color3.fromRGB(255, 40, 50), rate = { 1.0, 1.6 }, dmg = 5, acc = 0.05, boltSpeed = 140, coins = 12, xp = 22, score = 120, from = 3, weight = 5, flying = true })
+hmob("h_ghost", { name = "Ghost", ai = "drone", look = "ghost", bolt = "hex", hp = 60, speed = 20, color = Color3.fromRGB(200, 230, 255), glow = Color3.fromRGB(150, 255, 230), rate = { 1.3, 2.1 }, dmg = 7, acc = 0.04, boltSpeed = 120, coins = 14, xp = 24, score = 130, from = 6, weight = 3, flying = true })
+hmob("h_witch", { name = "Witch", ai = "sniper", look = "witch", bolt = "hex", hp = 85, speed = 13, scale = 0.97, color = Color3.fromRGB(40, 30, 50), glow = Color3.fromRGB(150, 255, 90), pref = { 90, 190 }, dmg = 22, coins = 15, xp = 28, score = 150, from = 4, weight = 3 })
+hmob("h_pumpkin", { name = "Pumpkin Bomber", ai = "exploder", look = "pumpkin", hp = 50, speed = 25, scale = 0.9, color = Color3.fromRGB(60, 50, 40), glow = Color3.fromRGB(255, 150, 30), dmg = 40, coins = 10, xp = 20, score = 120, from = 5, weight = 4, melee = true })
+hmob("h_brute", { name = "Gravedigger", ai = "tank", look = "brute", hp = 650, speed = 8, scale = 1.45, color = Color3.fromRGB(90, 100, 80), glow = Color3.fromRGB(150, 255, 120), pref = { 42, 105 }, rate = { 2.6, 3.4 }, dmg = 16, acc = 0.03, boltSpeed = 84, coins = 35, xp = 70, score = 400, from = 6, weight = 1.4 })
+hmob("h_keeper", { name = "Coffin Keeper", ai = "shield", look = "keeper", hp = 190, speed = 12.6, scale = 1.05, color = Color3.fromRGB(60, 50, 70), glow = Color3.fromRGB(255, 70, 60), pref = { 21, 56 }, rate = { 1.8, 2.8 }, dmg = 8, acc = 0.035, boltSpeed = 140, coins = 20, xp = 35, score = 200, from = 7, weight = 3, bolt = "blood" })
+Config.HEnemyOrder = { "h_skeleton", "h_zombie", "h_bat", "h_witch", "h_pumpkin", "h_ghost", "h_brute", "h_keeper" }
+Config.EnemyTips.h_bat = "Swoops around you spitting blood. Small and quick: lead your shots."
+Config.EnemyTips.h_witch = "Long-range hexes. A green glow means she is about to fire: break line of sight."
+Config.EnemyTips.h_pumpkin = "Runs at you and bursts. Shoot the glowing pumpkin to set it off early."
+Config.EnemyTips.h_ghost = "Drifts through the air firing hex bolts. Its glowing face is the head."
+Config.EnemyTips.h_brute = "Slow and very tough. Lobs grave-dirt orbs. Hit the glowing lantern on its back."
+Config.EnemyTips.h_keeper = "Holds a coffin lid that blocks frontal fire. Aim for the head or flank it."
+
+table.insert(Config.Bosses, { id = "dracula", name = "Dracula", title = "Lord of the Night of Terror", hp = 5000, event = "halloween" })
+
+Config.Halloween = {
+	-- the event runs through October and the first week of November (UTC); set Force to true or false to override
+	Force = nil :: boolean?,
+	CandyBossBase = 80, CandyBossCycle = 30, CandyPerCoins = 10, StandardChance = 0.1,
+	Fever = { window = 5, max = 10, per = 0.12, rate = 1.3 },
+	Lifesteal = 0.12, Thirst = 1.25,
+	FangChance = 0.34, FangPity = 3,
+	Quests = {
+		{ id = "hz", name = "Zombie walk", desc = "Destroy 120 zombies.", goal = 120, kind = "h_zombie", candy = 150 },
+		{ id = "hs", name = "Bag of bones", desc = "Destroy 100 skeleton archers.", goal = 100, kind = "h_skeleton", candy = 150 },
+		{ id = "hp", name = "Smash the patch", desc = "Destroy 40 pumpkin bombers.", goal = 40, kind = "h_pumpkin", candy = 120 },
+		{ id = "hw", name = "Witch hunt", desc = "Destroy 30 witches.", goal = 30, kind = "h_witch", candy = 150 },
+		{ id = "hb", name = "Bat swatter", desc = "Destroy 60 vampire bats or ghosts.", goal = 60, kinds = { "h_bat", "h_ghost" }, candy = 120 },
+		{ id = "hd", name = "Stake through the heart", desc = "Defeat Dracula 3 times.", goal = 3, ev = "dracula", candy = 400 },
+		{ id = "hn", name = "Night shift", desc = "Reach wave 15 in Night of Terror.", goal = 15, ev = "nightWave", max = true, candy = 300 },
+	},
+	-- the Reaper's Contract: a longer quest line that awards Reaper's Eye
+	Contract = {
+		{ id = "souls", name = "Harvest 350 souls", desc = "Destroy monsters in Night of Terror.", goal = 350 },
+		{ id = "heads", name = "Take 50 heads", desc = "Headshot kills in Night of Terror.", goal = 50 },
+		{ id = "wave", name = "Outlast the night", desc = "Reach wave 10 in Night of Terror.", goal = 10, max = true },
+		{ id = "dracula", name = "Face the Count", desc = "Defeat Dracula once.", goal = 1 },
+	},
+}
+
+---------------------------------------------------------------- the grind loop
+-- Play runs -> earn coins, XP and pass XP -> upgrade and unlock -> hit the level cap -> prestige for a permanent
+-- multiplier and an exclusive finish -> repeat faster. A daily login streak and event-pass tiers pace it out.
+Config.Prestige = {
+	level = 30, max = 10, bonus = 0.1, -- +10% coins and XP per prestige, kept forever
+	rewards = { [1] = { skin = "prestige1", coins = 2000 }, [2] = { coins = 3000 }, [3] = { skin = "prestige3", coins = 4000 }, [4] = { coins = 5000 }, [5] = { skin = "prestige5", coins = 7500 } },
+	later = { coins = 10000 },
+}
+Config.Pass = {
+	tiers = 40, xpPerTier = 2500,
+	-- every tier pays something; landmark tiers pay more
+	reward = function(t: number)
+		if t == 40 then return { skin = "pass", coins = 5000 } end
+		if t % 10 == 0 then return { coins = 2500, candy = 150 } end
+		if t % 5 == 0 then return { coins = 1200, candy = 60 } end
+		if t % 2 == 0 then return { coins = 400 } end
+		return { coins = 250, xp = 300 }
+	end,
+}
+Config.LoginRewards = {
+	{ coins = 200 }, { coins = 300 }, { coins = 400, candy = 25 }, { coins = 500 }, { coins = 650, candy = 40 }, { coins = 800 }, { coins = 1500, candy = 100 },
 }
 
 return Config

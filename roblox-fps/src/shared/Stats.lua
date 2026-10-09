@@ -51,7 +51,8 @@ function Stats.weapon(id: string, prof, runState)
 	local w = Config.WeaponById[id]
 	local s = table.clone(w)
 	local up = function(k) return Stats.upgradeLevel(prof, id, k) end
-	local on = function(a) return Stats.attOn(prof, id, a) end
+	-- event guns have their own optics, so a red dot attachment never applies to them
+	local on = function(a) return not (a == "reddot" and w.event ~= nil) and Stats.attOn(prof, id, a) end
 	local U = Config.Upgrades
 	s.dmg = w.dmg * (1 + U.damage.per * up("damage")) * (on("silencer") and 0.95 or 1)
 	s.rpm = w.rpm * (1 + U.rate.per * up("rate"))
@@ -66,6 +67,13 @@ function Stats.weapon(id: string, prof, runState)
 	s.reddot, s.silenced, s.laser = on("reddot"), on("silencer"), on("laser")
 	s.scope = w.scope and not s.reddot
 	s.zoom = (w.scope and s.reddot) and 0.8 or w.zoom
+	if w.builtinSight then
+		-- the Fang's holo sight behaves like a red dot without taking the attachment slot
+		s.reddot = true
+		s.adsSpread *= 0.85
+		s.adsRecoil = 0.85
+	end
+	if w.special == "fever" then s.rpm *= Config.Halloween.Fever.rate end
 	local reserveCap = w.reserve * 1.5
 	if runState then
 		local m = Stats.buffMods(runState.buffs, runState.powerups)
@@ -112,6 +120,37 @@ function Stats.waveScale(wave: number, diff: string, mutator: string?)
 	}
 end
 
+-- ---------------------------------------------------------------- events, skins and the grind loop
+function Stats.halloweenActive(): boolean
+	local force = Config.Halloween.Force
+	if force ~= nil then return force end
+	local d = os.date("!*t")
+	return d.month == 10 or (d.month == 11 and d.day <= 7)
+end
+
+-- a skin fits a weapon unless it is gun-specific
+function Stats.skinFits(key: string, id: string): boolean
+	local s = Config.Skins[key]
+	return s ~= nil and (s.only == nil or s.only == id)
+end
+
+-- the skin a weapon actually shows: an owned, fitting choice, else the weapon's own finish, else Factory
+function Stats.weaponSkin(prof, id: string): string
+	local k = prof.skin and prof.skin[id]
+	if k and Stats.skinFits(k, id) and prof.skins and prof.skins[k] then return k end
+	local w = Config.WeaponById[id]
+	return (w and w.defaultSkin) or "stock"
+end
+
+function Stats.prestigeMult(prof): number
+	return 1 + Config.Prestige.bonus * ((prof and prof.prestige) or 0)
+end
+
+function Stats.passTier(prof): number
+	local xp = (prof and prof.pass and prof.pass.xp) or 0
+	return math.min(Config.Pass.tiers, math.floor(xp / Config.Pass.xpPerTier))
+end
+
 function Stats.mapUnlocked(prof, mapId: string): boolean
 	local m = Config.MapById[mapId]
 	if not m then return false end
@@ -138,6 +177,7 @@ function Stats.rewardText(r): string
 		table.insert(out, table.concat(t, ", "))
 	end
 	if r.xp then table.insert(out, string.format("%d XP", r.xp)) end
+	if r.candy then table.insert(out, string.format("%d candy corn", r.candy)) end
 	return table.concat(out, " · ")
 end
 
