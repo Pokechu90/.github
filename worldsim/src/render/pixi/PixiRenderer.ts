@@ -96,6 +96,8 @@ export class PixiRenderer implements WorldRenderer {
   private buildings = new Map<number, BuildingGfx>();
   private townLabels = new Map<number, Text>();
   private time = 0;
+  private rockets: { sprite: Sprite; flame: Sprite; t: number; x: number; y: number }[] = [];
+  private launchesSeen = new Set<string>();
   /** Id of the person the camera follows, if any. */
   follow: number | null = null;
   private snap: Snapshot | null = null;
@@ -168,9 +170,47 @@ export class PixiRenderer implements WorldRenderer {
       }
     }
 
+    for (const [x, y] of snap.launches) {
+      const key = `${x.toFixed(1)},${y.toFixed(1)},${Math.floor(snap.time / 1440)}`;
+      if (this.launchesSeen.has(key)) continue;
+      this.launchesSeen.add(key);
+      this.launchRocket(x, y);
+    }
     this.syncPeople(snap.npcs);
     if (snap.buildings) this.syncBuildings(snap.buildings);
     this.syncTownLabels(snap);
+  }
+
+  /** A rocket lifts off from a launch pad (purely visual). */
+  private launchRocket(x: number, y: number): void {
+    const g = new Graphics();
+    g.rect(-3, -40, 6, 40).fill(0xf0f0f0);
+    g.poly([-3, -40, 3, -40, 0, -50]).fill(0xd03030);
+    g.poly([-3, -6, -7, 0, -3, 0]).fill(0x888888);
+    g.poly([3, -6, 7, 0, 3, 0]).fill(0x888888);
+    const sprite = new Sprite(this.app.renderer.generateTexture({ target: g, resolution: 4 }));
+    sprite.anchor.set(0.5, 1);
+    sprite.scale.set(1 / UNITS_PER_TILE);
+    const flame = new Sprite();
+    this.applyBaked(flame, this.textures.flame(), 2);
+    flame.rotation = Math.PI;
+    this.worldLayer.addChild(flame, sprite);
+    this.rockets.push({ sprite, flame, t: 0, x, y: y - 0.4 });
+  }
+
+  private updateRockets(deltaMS: number): void {
+    for (const r of this.rockets) {
+      r.t += deltaMS / 1000;
+      const rise = r.t * r.t * 6; // accelerating upwards (tiles)
+      r.sprite.position.set(r.x, r.y - rise);
+      r.flame.position.set(r.x, r.y - rise + 0.05);
+      r.flame.scale.y = (-(1.5 + Math.sin(r.t * 40) * 0.4)) / UNITS_PER_TILE * 2;
+    }
+    for (const r of this.rockets.filter((x) => x.t > 6)) {
+      r.sprite.destroy({ texture: true });
+      r.flame.destroy();
+    }
+    this.rockets = this.rockets.filter((x) => x.t <= 6);
   }
 
   private syncPeople(npcs: NpcView[]): void {
@@ -426,6 +466,7 @@ export class PixiRenderer implements WorldRenderer {
     }
 
     this.repaintStaleChunks();
+    this.updateRockets(deltaMS);
     this.drawMarker();
     if (this.snap) this.atmosphere.update(this.snap, cam.width, cam.height, deltaMS);
   }

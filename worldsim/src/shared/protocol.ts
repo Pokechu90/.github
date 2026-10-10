@@ -17,7 +17,7 @@ export type SelectTarget =
   | { kind: 'settlement'; id: number };
 
 export type ToSim =
-  | { type: 'init'; seed: number }
+  | { type: 'init'; seed: number; sandbox?: string }
   /** Game minutes per real second. 0 = paused. */
   | { type: 'setSpeed'; speed: number }
   /** What the camera can see, in tile coordinates. `detail` = show plants & animals. */
@@ -35,6 +35,8 @@ export type ToSim =
   | { type: 'save'; requestId: number }
   /** Replace the world with a saved one. */
   | { type: 'load'; data: string }
+  /** Ask for the state of space exploration (for the star map). */
+  | { type: 'spaceState'; requestId: number }
 
 // ---------- Simulation -> Page ----------
 
@@ -44,6 +46,7 @@ export type FromSim =
   | { type: 'npcContext'; requestId: number; context: NpcPromptContext | null }
   | { type: 'focusContexts'; requestId: number; contexts: NpcPromptContext[] }
   | { type: 'saveData'; requestId: number; data: string; year: number }
+  | { type: 'spaceState'; requestId: number; data: SpaceViewData }
   /** Minimap data: newly explored chunks (4x4 biome samples each) and all towns. */
   | { type: 'overview'; chunks: { cx: number; cy: number; cells: number[] }[]; reset: boolean }
   | { type: 'error'; message: string };
@@ -82,6 +85,32 @@ export interface AnimalView {
   action: string;
   young: boolean;
   facing: 1 | -1;
+}
+
+export interface MissionView {
+  id: number;
+  kind: 'probe' | 'crewed' | 'interstellar' | 'colony';
+  from: string;
+  fromStar: string;
+  targetStar: string;
+  targetPlanet: string | null;
+  launchDay: number;
+  arriveDay: number;
+  crew: string[];
+  colonists: number;
+  status: 'travelling' | 'arrived' | 'lost';
+}
+
+export interface SpaceViewData {
+  seed: number;
+  day: number;
+  knownStars: string[];
+  charted: string[];
+  explored: string[];
+  missions: MissionView[];
+  colonies: { name: string; planetId: string; population: number; foundedDay: number; founders: string[]; parent: string; habitability: number }[];
+  launches: number;
+  settlements: { name: string; x: number; y: number; tier: string; population: number }[];
 }
 
 export interface NpcView {
@@ -256,6 +285,8 @@ export interface Snapshot {
   /** Sent when buildings change or come into view; otherwise null (unchanged). */
   buildings: BuildingView[] | null;
   settlements: SettlementView[];
+  /** Rockets launched in the last day (x, y), for the launch animation. */
+  launches: [number, number][];
   /** Everyone in the settlement nearest the camera (sent about once a second). */
   people: PersonSummary[] | null;
   selected: SelectedInfo | null;

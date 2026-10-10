@@ -48,11 +48,14 @@ export const TECHS: Tech[] = [
   { id: 'rocketry', name: 'Rocketry', era: 6, requires: ['computing', 'flight'], cost: 45000, inspiredBy: ['research', 'building'], description: 'Rockets and launch pads: the way to space.' },
   { id: 'spaceflight', name: 'Spaceflight', era: 7, requires: ['rocketry'], cost: 70000, inspiredBy: ['research'], description: 'Crewed ships explore other worlds.' },
   { id: 'colonization', name: 'Space colonization', era: 7, requires: ['spaceflight'], cost: 100000, inspiredBy: ['research', 'building'], description: 'Settle habitable planets.' },
+  { id: 'fusion', name: 'Fusion power', era: 7, requires: ['spaceflight'], cost: 120000, inspiredBy: ['research'], description: 'Faster ships and near-limitless energy.' },
+  { id: 'terraforming', name: 'Terraforming', era: 8, requires: ['colonization', 'fusion'], cost: 180000, inspiredBy: ['research', 'farming'], description: 'Slowly make colony worlds more Earth-like.' },
+  { id: 'warp_drive', name: 'Warp drive', era: 8, requires: ['fusion', 'colonization'], cost: 260000, inspiredBy: ['research'], description: 'Cross light-years in months, not decades.' },
 ];
 
 export const TECH_BY_ID = new Map(TECHS.map((t) => [t.id, t]));
 
-export const ERAS = ['Stone Age', 'Neolithic', 'Ancient', 'Classical', 'Industrial', 'Electric', 'Information', 'Space'];
+export const ERAS = ['Stone Age', 'Neolithic', 'Ancient', 'Classical', 'Industrial', 'Electric', 'Information', 'Space', 'Interstellar'];
 
 export function hasTech(s: Settlement | undefined, id: string): boolean {
   return !!s && s.tech.includes(id);

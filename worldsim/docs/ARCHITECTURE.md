@@ -135,22 +135,45 @@ Memory stays small: a short event log (last ~20 events) plus a handful of
 summarised long-term memories, compressed by the LLM (or by rules offline)
 when the log fills up.
 
-## Milestones
+## Milestones (all built)
 
-1. ✅ **Procedural world.** Chunked terrain with biomes and rivers, camera pan/zoom,
-   day/night, seasons, regional weather, growing and spreading plants, deer
-   with needs and population dynamics.
-2. **People.** 10 NPCs with identity, needs, daily routines (sleep/eat/work/socialise),
-   families and life cycle. No LLM yet.
-3. **Minds.** Node/Express server proxying an LLM. Click an NPC to chat; replies use
-   personality, mood, needs and memories; conversations are remembered.
-   Offline fallback.
-4. **Civilisation.** Settlements (camp → village → town → city), jobs, crafting, trade,
-   money, tech tree start, IndexedDB autosave plus JSON export/import.
-5. **Scale.** Tiered simulation, spatial indexing and abstract far-away settlements,
-   aiming at thousands of NPCs. Minimap, timeline and world stats.
-6. **Space.** Rocketry tech, procedural star systems and planets (gravity, atmosphere,
-   temperature, water → habitability), zoomable star map, colonies.
+1. ✅ **Procedural world.** Chunked terrain, biomes, rivers, camera, day/night, seasons, weather, plants, deer.
+2. ✅ **People.** Needs, personality, utility-AI brain with inner thoughts, jobs and daily routines,
+   families, courtship and marriage, births with inheritance, memory and gossip, diseases.
+   (`sim/npc/*`)
+3. ✅ **Minds.** Express brain server with Claude / OpenAI / Ollama, rate-limited queue, chat
+   box, conversations stored in memory, LLM goals for nearby NPCs, offline fallback.
+   (`server/*`, `src/llm/*`, `src/shared/llm.ts`, `sim/npc/context.ts`)
+4. ✅ **Civilisation.** Technology tree, farming, crafting, prices, wages, trade, leaders, laws,
+   culture, crime, raids, migration founding new villages, newcomers, save/load.
+   (`sim/society/*`, `sim/save.ts`, `ui/saves.ts`)
+5. ✅ **Scale.** Tiered simulation (focus / active / distant daily aggregate / abstract city
+   population / fast-forward), lazy indexes, path caches, minimap, chronicle. (`sim/tiers.ts`)
+6. ✅ **Space.** Procedural galaxy and planets with habitability, astronomy, probes, crewed
+   missions, interstellar probes, colony ships, colonies that spread, star map with system
+   and surface views. (`shared/galaxy.ts`, `sim/space/*`, `ui/starmap.ts`, `ui/surface.ts`)
+
+### Where things live
+
+```
+src/sim/npc/       people: brain.ts (decisions), actions.ts (doing), path.ts (A*),
+                   social.ts, life.ts (births, jobs), health.ts (disease), memory.ts,
+                   context.ts (LLM bridge), describe.ts (UI profiles)
+src/sim/society/   settlement.ts, work.ts (farming, crafting, planning, tiers),
+                   tech.ts, economy.ts, governance.ts, migration.ts
+src/sim/space/     program.ts (missions, colonies)
+src/sim/tiers.ts   level-of-detail simulation
+src/llm/           browser side of the LLM (queue, limits, offline replies, thinking loop)
+server/            Node brain server (providers.ts, index.ts)
+```
+
+### Ideas for going further
+
+- Let colonies become full worlds you can visit: one `World` per planet in the worker,
+  with only the one you are looking at fully simulated.
+- Predators (wolves) and livestock; weather disasters; seas and boats.
+- Wars with armies on the map; religion and art as culture.
+- Move the renderer to Three.js using the same snapshot protocol.
 
 ## Honest limits (and the workable versions)
 

@@ -25,7 +25,7 @@ export class SimClient {
   private nextRequest = 1;
 
   /** Sends a request and waits for the matching reply (by requestId). */
-  request<T extends 'npcContext' | 'focusContexts' | 'saveData'>(
+  request<T extends 'npcContext' | 'focusContexts' | 'saveData' | 'spaceState'>(
     msg: ToSim & { requestId: number },
     replyType: T,
   ): Promise<Extract<FromSim, { type: T }>> {

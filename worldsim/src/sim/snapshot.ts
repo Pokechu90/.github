@@ -232,6 +232,7 @@ export class ViewTracker {
       buildings,
       settlements,
       people,
+      launches: world.state.space.recentLaunches.map(([x, y]) => [x, y] as [number, number]),
       selected: this.describeSelected(world),
       stats: {
         population: census.population,

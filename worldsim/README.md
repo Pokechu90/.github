@@ -1,79 +1,154 @@
 # WorldSim
 
-A living, procedurally generated world that runs in your browser. Today it
-has terrain, weather, seasons, plants and deer. Later milestones add people
-with minds, then civilisations, then space travel.
+A living, procedurally generated world in your browser. People have their own
+personalities, needs, families, jobs, memories and opinions. They farm, trade,
+fall in love, catch diseases, found new villages, invent technology, and
+eventually go to space and colonise other planets. The world keeps going
+whether or not you're watching, and you can talk to anyone in it.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full plan.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it all fits together.
 
-## Running it
+---
+
+## 1. Run it on your computer
 
 You need **Node.js 20.19 or newer** (22 LTS recommended) from https://nodejs.org.
-Check your version with `node -v`.
 
 ```bash
 cd worldsim
-npm install        # first time only: downloads the libraries (~1 minute)
-npm run dev        # starts the game
+npm install        # first time only
+npm run dev        # starts the game AND the NPC "brain" server
 ```
 
-Then open **http://localhost:5173** in Chrome, Edge or Firefox. Press `Ctrl+C` in
-the terminal to stop it. When you edit code, the page reloads by itself.
+Open **http://localhost:5173**. Press `Ctrl+C` in the terminal to stop.
 
-Other commands:
+### Give the NPCs real minds (optional)
+
+Without an LLM, NPCs answer with simple built-in replies. To let them think
+and talk for real:
+
+1. Copy `.env.example` to a new file called `.env` (same folder).
+2. Paste an API key into it:
+   - **Claude** (default): `ANTHROPIC_API_KEY=...` from https://console.anthropic.com
+   - or **OpenAI**: set `LLM_PROVIDER=openai` and `OPENAI_API_KEY=...`
+   - or **free and local**: install [Ollama](https://ollama.com), run `ollama pull llama3.1`,
+     then set `LLM_PROVIDER=ollama`
+3. Restart `npm run dev`. The 🧠 button in the top bar turns gold when it's connected.
+
+The key stays in `.env` on your computer and is only read by the server. It is
+never sent to the browser. In the 🧠 dialog you can set the **maximum LLM calls per
+minute** (to control cost), and whether the LLM may plan goals for people near the camera.
+
+The default model is Claude Opus 5.5. For cheaper conversations set
+`CLAUDE_MODEL=claude-sonnet-5-5` or `claude-haiku-5-5` in `.env`.
+
+### Other commands
 
 | Command | What it does |
 |---|---|
-| `npm test` | Runs automated tests, including simulating 8 years of ecology without a browser |
-| `npm run typecheck` | Checks the code for type errors |
-| `npm run build` | Makes an optimised version in `dist/` you can host anywhere |
+| `npm test` | Automated tests (terrain, ecology, people, civilisation, save/load, space) |
+| `npm run typecheck` | Checks the code for errors |
+| `npm run build` | Builds a static website in `dist/` |
+| `npm run game` / `npm run server` | Start only the game, or only the brain server |
 
-## Controls
+---
+
+## 2. Play it on the web
+
+The game is a static website. The simulation runs entirely in the browser, so
+it can be hosted anywhere for free. When hosted without the brain server, NPCs
+use offline replies (or you can point the 🧠 settings at a server you run).
+
+**GitHub Pages:** this repository includes a workflow,
+`.github/workflows/worldsim-pages.yml`, that tests, builds and publishes the
+game whenever `worldsim/` changes on `main`. Enable it once in the repository's
+**Settings → Pages → Source: GitHub Actions**. Tip: Pages works best from a
+normal repository name (e.g. move this folder to a repo called `worldsim` →
+`https://<you>.github.io/worldsim/`).
+
+**Any static host** (Netlify, Vercel, Cloudflare Pages, itch.io): run `npm run build`
+and upload the `dist/` folder.
+
+**Hosting the brain server** for an online game: deploy `server/` to any Node host
+(Render, Railway, Fly.io), set the API key there, and set `ALLOWED_ORIGIN` to your
+game's address. Players then enter the server address in the 🧠 settings.
+
+---
+
+## 3. Controls
 
 | Input | Action |
 |---|---|
-| Drag, or W A S D / arrow keys | Move the camera |
-| Mouse wheel, or + / − | Zoom (zoom far out to see the terrain map) |
-| Click | Inspect an animal or plant (needs, age, memory) |
-| Hover | See the biome, coordinates and average temperature of a tile |
-| Space | Pause / resume |
-| 1–5 | Speed: 1×, 10×, 60×, 1 year/min, 10 years/min |
-| "New world" | Generate a new random world |
+| Drag, or W A S D / arrows | Move the camera |
+| Mouse wheel, + / − | Zoom (far out = map view with town names) |
+| Click | Inspect a person, building, town, animal or plant |
+| Esc | Deselect / stop following |
+| Space · 1–5 | Pause · speeds 1×, 10×, 60×, 1 year/min, 10 years/min |
+| 💬 Talk (person panel) | Chat with them. Type anything; they answer in character |
+| 📍 Follow / 🎯 Find | Camera follows a person / jumps to them |
+| Minimap (bottom left) | Click to jump, scroll to zoom |
+| 🪐 Space | Star map → solar systems → planet surfaces |
+| 💾 Save | Save, load, export/import a `.json` file. Autosaves every 3 minutes |
 
-Each world comes from a **seed** in the URL (e.g. `?seed=42`). The same seed always
-creates the same world, so you can share one with a friend.
+**Worlds are seeds:** `?seed=42` in the address always makes the same world.
+**Sandbox:** add `&sandbox=space` to start with every technology and a launch pad
+(or `&sandbox=modern` for the computer age), to try the late game straight away.
 
-## What's in milestone 1
+---
 
-- **Endless terrain** generated in 32×32 chunks as you explore. Oceans, beaches,
-  grassland, forest, taiga, tundra, savanna, desert, swamp, mountains, snowy
-  peaks and winding rivers.
-- **Time.** Smooth day/night with warm dawns and dusks. Days are longer in
-  summer. There are four seasons (a year is compressed to 120 days).
-- **Weather.** Rain fronts drift across the map, so it can rain in one valley and
-  not the next. Snow falls when it's cold, the snow line moves with the seasons,
-  and lakes and rivers freeze in cold winters.
-- **Plants.** Oak, pine, apple trees, berry bushes, wild wheat and cacti. They grow
-  from seed to sapling to mature to old, then die and leave a standing dead tree
-  for a while. Leaves change colour and fall, fruit ripens in season, plants
-  spread seeds and compete for space, and frost hurts them.
-- **Deer.** Each deer has hunger, thirst and tiredness. They drink at rivers and
-  lakes and remember where water is. They graze, eat fruit, sleep at night and
-  stay with their herd. They mate in autumn, fawns are born in late spring
-  or early summer and follow their mother, and deer die of starvation, thirst or old age.
-  Grass is limited and stops growing in winter, so populations rise and fall
-  naturally. Watch the graph in the side panel.
+## 4. What's in the world
 
-## Testing milestone 1 yourself
+**Nature.** Endless terrain in chunks (oceans, rivers, forests, deserts, tundra,
+mountains) with day/night, seasons, drifting regional weather, snow and frozen
+lakes. Trees and plants grow, fruit by season, spread, compete and die. Deer graze,
+drink, herd, breed in autumn and starve in hard winters. Herds recolonise empty land.
 
-1. Run `npm run dev` and open the page. You should see land, trees and the clock
-   ticking from 06:00 on Spring 1.
-2. Zoom in on some deer (they're brown) and click one. The side panel shows its
-   needs. Watch it go and drink when thirst gets high.
-3. Press **4** (1 year per minute) and watch the land and trees change through
-   summer, autumn and winter. Watch night fall.
-4. Press **5** (10 years per minute) for a minute or two. The deer graph rises and
-   falls, and "Births" and "Died of …" go up in the World panel.
-5. Zoom far out. Plants hide and you see the terrain map. Drag around to explore
-   and new land generates.
-6. Run `npm test`. All tests should pass.
+**People.** Each person has a name, look, Big Five personality, values, skills, a
+job, needs (hunger, tiredness, loneliness, fear, boredom), health, mood and an
+inner thought. A utility-AI "brain" chooses what to do from all of that. People:
+- **Live in families:** they court, fall in love, marry, sometimes split up, and
+  have children who inherit their looks and temperament. Orphans are taken in.
+- **Remember** what happens to them (short-term and lasting memories) and gossip,
+  so news spreads by word of mouth and each person only knows what they saw or heard.
+- **Work:** foraging, hunting, fishing, woodcutting, building, farming, crafting,
+  healing, teaching, research, trade. Children learn from their parents and elders.
+- **Get sick:** colds, fevers, dysentery, pox and plague spread through homes and
+  towns. Survivors gain immunity; healers, medicine, quarantine laws and warm
+  clothing help.
+- **Die** of old age, hunger, disease, childbirth, raids, or accidents in space.
+
+**Talking to people.** Your words, their reply and how they felt about it go into
+their memory. They may lie, refuse, joke or get annoyed. What you say can change
+their plans, and they tell others about you.
+
+**Civilisation.** Settlements grow from camp → village → town → city → metropolis.
+Technology runs from stone tools through agriculture, writing, currency,
+metalwork, printing, industry, electricity and computing to rocketry and warp
+drive. Ideas come from practising skills and from scholars, and spread through
+trade and migration. There are prices from supply and demand, wages, traders,
+leaders chosen by respect, laws shaped by the leader's personality, culture,
+crime, diplomacy and raids. Crowded or hungry towns send groups off to found new
+villages; newcomers arrive from beyond the map.
+
+**Space.** Astronomy charts the planets; rockets send probes, then crews, then
+interstellar probes and colony ships. Stars and planets are generated from the seed
+(gravity, atmosphere, temperature, water → habitability), so the galaxy never ends.
+Colonies grow according to their planet and send ships of their own.
+
+---
+
+## 5. Honest limits
+
+- **Time is compressed:** a year has 120 days, so generations and history unfold in
+  hours of play rather than years.
+- **Scale is tiered:** people near the camera are simulated minute by minute;
+  distant towns run as a daily aggregate; very large cities keep part of their
+  population as statistics; at 1+ year/minute everything is aggregate. This is how
+  a browser handles thousands of people.
+- **LLM minds cost money:** they only run for conversations and for people near
+  the camera, within your per-minute limit. Everyone else uses the rules-based
+  brain, which is always running.
+- **Space colonies are simulated as populations**, not as full worlds you can walk
+  around (yet). The planet surface view is a generated map.
+- **Real-world realism is approximate:** models of disease, economy and physics
+  are simplified to behave plausibly, not to be scientifically exact.

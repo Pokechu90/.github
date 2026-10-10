@@ -14,6 +14,7 @@ import { ChatBox } from './ui/chat';
 import { setupSettings } from './ui/settings';
 import { setupSaves } from './ui/saves';
 import { Minimap } from './ui/minimap';
+import { setupStarmap } from './ui/starmap';
 
 async function main(): Promise<void> {
   // The seed comes from the URL (?seed=123) so worlds can be shared.
@@ -52,6 +53,7 @@ async function main(): Promise<void> {
   const brain = new BrainClient();
   const chat = new ChatBox(sim, brain);
   setupSettings(brain, hud.actions);
+  setupStarmap(sim, hud.actions);
   const saves = setupSaves(sim, hud.actions, () => {
     renderer.reset();
     chat.close();
@@ -102,7 +104,7 @@ async function main(): Promise<void> {
     sim.send({ type: 'viewport', ...b, detail });
   }, 100);
 
-  sim.send({ type: 'init', seed });
+  sim.send({ type: 'init', seed, sandbox: params.get('sandbox') ?? undefined });
   sim.send({ type: 'setSpeed', speed: 1 });
 
   // Handy for poking at things from the browser console.

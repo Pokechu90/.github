@@ -12,6 +12,8 @@ import { applyChat, applyGoal, buildContext } from './npc/context';
 import { ageYears } from './npc/people';
 import { deserialize, serialize } from './save';
 import { updateTiers } from './tiers';
+import { spaceView } from './space/program';
+import { applySandbox } from './sandbox';
 import { MINUTES_PER_YEAR, getCalendar } from '../shared/time';
 
 const LOOP_MS = 50;
@@ -42,6 +44,7 @@ ctx.onmessage = (e) => {
       world.fastForward = speed >= MINUTES_PER_YEAR / 60 - 1;
       const spawn = world.terrain.findSpawn();
       world.populate(spawn.x, spawn.y);
+      if (msg.sandbox) applySandbox(world, msg.sandbox);
       ctx.postMessage({ type: 'ready', seed: msg.seed, spawn });
       break;
     }
@@ -87,6 +90,9 @@ ctx.onmessage = (e) => {
     }
     case 'focusRequest':
       ctx.postMessage({ type: 'focusContexts', requestId: msg.requestId, contexts: world ? focusContexts(world, msg.max) : [] });
+      break;
+    case 'spaceState':
+      if (world) ctx.postMessage({ type: 'spaceState', requestId: msg.requestId, data: spaceView(world) });
       break;
     case 'save':
       if (world) ctx.postMessage({ type: 'saveData', requestId: msg.requestId, data: serialize(world), year: getCalendar(world.state.time).year });

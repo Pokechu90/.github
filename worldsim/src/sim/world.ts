@@ -20,6 +20,7 @@ import { updateRomanceDaily } from './npc/social';
 import { assignJobs, updateLifeDaily } from './npc/life';
 import { totalFood, updateSettlementDaily } from './society/settlement';
 import { installCivilization } from './society';
+import { emptySpace, spaceDaily, spaceStats } from './space/program';
 import { abstractPopulationDaily, chunkIsNear, distantSettlementDaily, updateTiers } from './tiers';
 import { BUILDINGS } from '../shared/people';
 
@@ -110,9 +111,12 @@ export class World {
       stats: { births: 0, deaths: {}, history: [], peakDeer: 0, peopleHistory: [], humanBirths: 0, humanDeaths: {} },
       events: [],
       chronicle: [],
+      space: emptySpace(),
     };
     this.log(`The world was born from seed ${seed}.`, 'world');
     installCivilization(this);
+    this.hooks.daily!.push(spaceDaily);
+    this.hooks.spaceStats = spaceStats;
   }
 
   /** Rebuilds the lookup tables after loading a save. */

@@ -7,6 +7,7 @@
 import { PLANTS } from '../shared/species';
 import type { Chunk, Plant, WorldState } from './state';
 import { World } from './world';
+import { emptySpace } from './space/program';
 
 const FORMAT = 'worldsim-save';
 const VERSION = 1;
@@ -80,6 +81,7 @@ export function deserialize(json: string): World {
   }
   // Older saves may lack newer fields; fill in defaults.
   world.state.chronicle ??= [];
+  world.state.space ??= emptySpace();
   for (const n of world.state.npcs) {
     n.chatLog ??= [];
     n.wealth ??= 0;

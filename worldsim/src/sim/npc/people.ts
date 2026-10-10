@@ -176,8 +176,11 @@ export function compatibility(a: Npc, b: Npc): number {
   return clamp01(1 - diff / 5 - vdiff / 8 + (kindness - 0.5) * 0.5);
 }
 
-/** Removes a person from the world, records them, and lets everyone grieve. */
-export function killNpc(world: World, npc: Npc, cause: string): void {
+/**
+ * Removes a person from the world, records them, and lets everyone grieve.
+ * With `departed`, they didn't die: they left the world (e.g. on a colony ship).
+ */
+export function killNpc(world: World, npc: Npc, cause: string, departed?: string): void {
   const s = world.state;
   const idx = s.npcs.indexOf(npc);
   if (idx < 0) return;
@@ -195,12 +198,13 @@ export function killNpc(world: World, npc: Npc, cause: string): void {
     childrenIds: npc.childrenIds.slice(),
   });
   if (s.deceased.length > 5000) s.deceased.splice(0, 1000);
-  s.stats.humanDeaths[cause] = (s.stats.humanDeaths[cause] ?? 0) + 1;
-
   const age = Math.floor(ageYears(npc));
   const eventId = world.newId();
   const settlement = world.settlement(npc.settlementId);
-  world.log(`${fullName(npc)} died of ${cause} at age ${age}${settlement ? ` in ${settlement.name}` : ''}.`, 'death', npc.id);
+  if (!departed) {
+    s.stats.humanDeaths[cause] = (s.stats.humanDeaths[cause] ?? 0) + 1;
+    world.log(`${fullName(npc)} died of ${cause} at age ${age}${settlement ? ` in ${settlement.name}` : ''}.`, 'death', npc.id);
+  }
 
   for (const other of s.npcs) {
     const r = other.relationships[npc.id];
@@ -210,13 +214,15 @@ export function killNpc(world: World, npc: Npc, cause: string): void {
     if (!family && (!r || r.familiarity < 0.3)) continue;
     const closeness = family ? 1 : Math.max(0, r?.affinity ?? 0);
     if (closeness <= 0.1 && !(r && r.affinity < -0.4)) continue;
-    const text = r && r.affinity < -0.4 && !family
-      ? `${npc.firstName}, whom I disliked, died of ${cause}.`
-      : `${fullName(npc)} died of ${cause}. I miss them.`;
+    const text = departed
+      ? `${fullName(npc)} left for ${departed}. I miss them.`
+      : r && r.affinity < -0.4 && !family
+        ? `${npc.firstName}, whom I disliked, died of ${cause}.`
+        : `${fullName(npc)} died of ${cause}. I miss them.`;
     remember(world, other, text, {
-      share: `${fullName(npc)} died of ${cause}.`,
+      share: departed ? `${fullName(npc)} left for ${departed}.` : `${fullName(npc)} died of ${cause}.`,
       importance: family ? 0.95 : 0.4 + closeness * 0.4,
-      feeling: r && r.affinity < -0.4 && !family ? 0 : -0.5 - closeness * 0.5,
+      feeling: departed ? -0.3 * closeness : r && r.affinity < -0.4 && !family ? 0 : -0.5 - closeness * 0.5,
       about: npc.id,
       eventId,
     });

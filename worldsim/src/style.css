@@ -128,3 +128,16 @@ table.stock { width: 100%; border-collapse: collapse; } table.stock td:nth-child
 .chips button { padding: 2px 8px; font-size: 11px; }
 #events h5 { margin: 10px 0 4px; color: var(--accent); font-size: 12px; }
 @media (max-width: 760px) { #minimap { display: none; } }
+
+#starmap { position: fixed; inset: 0; z-index: 20; background: #03050c; display: grid; grid-template-columns: 1fr 320px; grid-template-rows: auto 1fr auto; }
+#starmap header { grid-column: 1 / 3; display: flex; gap: 10px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+#starmap header strong { color: var(--accent); }
+#starmap header #sm-sub { flex: 1; }
+#sm-canvas { width: 100%; height: 100%; display: block; cursor: grab; }
+#sm-info { overflow-y: auto; padding: 10px 14px; border-left: 1px solid var(--border); background: #0d1117; }
+#sm-info h3 { color: var(--accent); margin: 4px 0; }
+#sm-info h4 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 14px 0 4px; }
+#sm-info canvas { width: 100%; image-rendering: pixelated; border-radius: 8px; margin-top: 8px; }
+#sm-info a, #sm-info ul { color: var(--text); }
+#sm-help { grid-column: 1 / 3; padding: 4px 14px; font-size: 12px; }
+@media (max-width: 760px) { #starmap { grid-template-columns: 1fr; grid-template-rows: auto 1fr 40vh auto; } #sm-info { border-left: 0; } }

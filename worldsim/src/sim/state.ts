@@ -9,6 +9,7 @@ import type { ChunkTerrain } from '../shared/terrain';
 import type { Rng } from '../shared/rng';
 import type { WorldEvent } from '../shared/protocol';
 import type { PlantStage } from '../shared/species';
+import type { SpaceState } from './space/program';
 
 export interface Plant {
   id: number;
@@ -288,4 +289,6 @@ export interface WorldState {
   events: WorldEvent[];
   /** Important events kept for the long-term history (techs, towns, wars...). */
   chronicle: WorldEvent[];
+  /** Astronomy, space missions and colonies on other worlds. */
+  space: SpaceState;
 }
