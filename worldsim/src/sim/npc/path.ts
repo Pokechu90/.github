@@ -9,7 +9,16 @@ import type { World } from '../world';
 
 const MAX_LEG = 48;
 const MARGIN = 16;
-const MAX_NODES = 9000;
+const MAX_NODES = 3000;
+/** Remember recently failed searches (e.g. targets across a lake) for a while. */
+const failed = new Map<string, number>();
+let failedSweep = 0;
+
+/** Performance counters (shown in debug output). */
+export const pathStats = { calls: 0, straight: 0, searches: 0, nodes: 0, failures: 0, cached: 0, reused: 0 };
+
+/** Recently found routes, by coarse start/goal cell: people walk the same routes every day. */
+const routes = new Map<string, { pts: number[]; time: number }>();
 
 const COST: Partial<Record<Biome, number>> = {
   [Biome.River]: 4,
@@ -33,16 +42,52 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
     tx = x0 + ((x1 - x0) / dist) * MAX_LEG;
     ty = y0 + ((y1 - y0) / dist) * MAX_LEG;
   }
-  if (lineClear(world, x0, y0, tx, ty)) return [tx, ty];
+  pathStats.calls++;
+  if (lineClear(world, x0, y0, tx, ty)) {
+    pathStats.straight++;
+    return [tx, ty];
+  }
 
   const sx = Math.floor(x0);
   const sy = Math.floor(y0);
   let gx = Math.floor(tx);
   let gy = Math.floor(ty);
+  const now = world.state.time;
+  const failKey = `${sx >> 2},${sy >> 2}>${gx >> 2},${gy >> 2}`;
+  const failedAt = failed.get(failKey);
+  if (failedAt !== undefined && now - failedAt < 1440) {
+    pathStats.cached++;
+    return null;
+  }
+  const known = routes.get(failKey);
+  if (known && now - known.time < 5 * 1440 && lineClear(world, x0, y0, known.pts[0], known.pts[1])) {
+    // Reuse it, but the last stretch to this exact destination must be clear too.
+    const pts = known.pts.slice();
+    const k = pts.length;
+    const px = k >= 4 ? pts[k - 4] : x0;
+    const py = k >= 4 ? pts[k - 3] : y0;
+    if (lineClear(world, px, py, tx, ty)) {
+      pathStats.reused++;
+      pts[k - 2] = tx;
+      pts[k - 1] = ty;
+      return smooth(world, x0, y0, pts);
+    }
+  }
+  pathStats.searches++;
+  if (failed.size > 5000 || routes.size > 20000 || now - failedSweep > 1440) {
+    failedSweep = now;
+    for (const [k, t] of failed) if (now - t > 1440) failed.delete(k);
+    for (const [k, r] of routes) if (now - r.time > 5 * 1440) routes.delete(k);
+  }
+  const fail = () => {
+    pathStats.failures++;
+    failed.set(failKey, now);
+    return null;
+  };
   // If the goal itself is water, aim for the nearest walkable tile next to it.
   if (!world.isWalkable(gx + 0.5, gy + 0.5)) {
     const alt = nearestWalkable(world, gx, gy, 4);
-    if (!alt) return null;
+    if (!alt) return fail();
     [gx, gy] = alt;
   }
 
@@ -52,6 +97,13 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
   const h = Math.max(sy, gy) + MARGIN - minY + 1;
   const n = w * h;
   const g = new Float32Array(n).fill(Infinity);
+  const costs = new Float32Array(n).fill(-2); // -2 = not looked up yet
+  const cost = (x: number, y: number) => {
+    const i = (y - minY) * w + (x - minX);
+    let c = costs[i];
+    if (c === -2) costs[i] = c = tileCost(world, x, y);
+    return c;
+  };
   const parent = new Int32Array(n).fill(-1);
   const closed = new Uint8Array(n);
   const heap = new MinHeap();
@@ -67,7 +119,8 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
     if (cur === goal) break;
     if (closed[cur]) continue;
     closed[cur] = 1;
-    if (++expanded > MAX_NODES) return null;
+    pathStats.nodes++;
+    if (++expanded > MAX_NODES) return fail();
     const cx = (cur % w) + minX;
     const cy = Math.floor(cur / w) + minY;
     for (let dy = -1; dy <= 1; dy++) {
@@ -78,11 +131,11 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
         if (nx < minX || ny < minY || nx >= minX + w || ny >= minY + h) continue;
         const ni = idx(nx, ny);
         if (closed[ni]) continue;
-        const cost = tileCost(world, nx, ny);
-        if (cost < 0) continue;
+        const c = cost(nx, ny);
+        if (c < 0) continue;
         // No cutting corners diagonally past water.
-        if (dx && dy && (tileCost(world, cx + dx, cy) < 0 || tileCost(world, cx, cy + dy) < 0)) continue;
-        const ng = g[cur] + cost * (dx && dy ? 1.414 : 1);
+        if (dx && dy && (cost(cx + dx, cy) < 0 || cost(cx, cy + dy) < 0)) continue;
+        const ng = g[cur] + c * (dx && dy ? 1.414 : 1);
         if (ng < g[ni]) {
           g[ni] = ng;
           parent[ni] = cur;
@@ -91,7 +144,7 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
       }
     }
   }
-  if (parent[goal] === -1 && goal !== start) return null;
+  if (parent[goal] === -1 && goal !== start) return fail();
 
   // Walk back from the goal, then smooth out zig-zags.
   const cells: number[] = [];
@@ -103,7 +156,9 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
     pts[pts.length - 2] = tx;
     pts[pts.length - 1] = ty;
   }
-  return smooth(world, x0, y0, pts);
+  const result = smooth(world, x0, y0, pts);
+  routes.set(failKey, { pts: result, time: now });
+  return result;
 }
 
 function smooth(world: World, x0: number, y0: number, pts: number[]): number[] {
@@ -123,20 +178,25 @@ function smooth(world: World, x0: number, y0: number, pts: number[]): number[] {
   return out;
 }
 
+/** Can you walk straight there? Wading across a narrow stream is fine. */
 export function lineClear(world: World, x0: number, y0: number, x1: number, y1: number): boolean {
   const dist = Math.hypot(x1 - x0, y1 - y0);
   const steps = Math.ceil(dist / 0.5);
+  let wet = 0;
   for (let s = 1; s <= steps; s++) {
     const t = s / steps;
     const b = world.biomeAt(Math.floor(x0 + (x1 - x0) * t), Math.floor(y0 + (y1 - y0) * t));
-    if (b < 0 || !BIOMES[b as Biome].walkable || b === Biome.River) return false;
+    if (b < 0 || !WALKABLE[b]) return false;
+    if (b === Biome.River && ++wet > 6) return false;
   }
   return true;
 }
 
+const WALKABLE: boolean[] = Object.values(BIOMES).map((b) => b.walkable);
+
 function tileCost(world: World, x: number, y: number): number {
   const b = world.biomeAt(x, y);
-  if (b < 0 || !BIOMES[b as Biome].walkable) return -1;
+  if (b < 0 || !WALKABLE[b]) return -1;
   return COST[b as Biome] ?? 1;
 }
 

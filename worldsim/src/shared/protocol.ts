@@ -13,7 +13,8 @@ export type SelectTarget =
   | { kind: 'animal'; id: number }
   | { kind: 'plant'; id: number; chunk: string }
   | { kind: 'npc'; id: number }
-  | { kind: 'building'; id: number };
+  | { kind: 'building'; id: number }
+  | { kind: 'settlement'; id: number };
 
 export type ToSim =
   | { type: 'init'; seed: number }
@@ -30,6 +31,10 @@ export type ToSim =
   /** Ask which nearby NPCs would like an LLM to decide their next goal. */
   | { type: 'focusRequest'; requestId: number; max: number }
   | { type: 'applyGoal'; id: number; result: DecideResult }
+  /** Ask for the whole world as a save file (JSON text). */
+  | { type: 'save'; requestId: number }
+  /** Replace the world with a saved one. */
+  | { type: 'load'; data: string }
 
 // ---------- Simulation -> Page ----------
 
@@ -37,7 +42,9 @@ export type FromSim =
   | { type: 'ready'; seed: number; spawn: { x: number; y: number } }
   | { type: 'snapshot'; snap: Snapshot }
   | { type: 'npcContext'; requestId: number; context: NpcPromptContext | null }
-  | { type: 'focusContexts'; requestId: number; contexts: NpcPromptContext[] };
+  | { type: 'focusContexts'; requestId: number; contexts: NpcPromptContext[] }
+  | { type: 'saveData'; requestId: number; data: string; year: number }
+  | { type: 'error'; message: string };
 
 export interface ChunkTerrainView {
   biomes: Uint8Array;
@@ -183,6 +190,24 @@ export type SelectedInfo =
       progress: number;
       residents: { name: string; id: number }[];
       notes: string[];
+      settlementId: number;
+    }
+  | {
+      kind: 'settlement';
+      id: number;
+      x: number;
+      y: number;
+      title: string;
+      subtitle: string;
+      leader: { name: string; id: number } | null;
+      laws: string[];
+      culture: string;
+      tech: string[];
+      researching: { name: string; progress: number; description: string } | null;
+      stock: { name: string; amount: number; price: number | null }[];
+      treasury: number | null;
+      buildings: string[];
+      neighbours: { name: string; id: number; relation: string }[];
     }
   | { kind: 'gone'; text: string };
 

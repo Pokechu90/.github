@@ -170,5 +170,6 @@ export function describeBuilding(world: World, id: number): SelectedInfo {
     progress: b.progress,
     residents: homeResidents(world, b.id).map((r) => ({ name: fullName(r), id: r.id })),
     notes,
+    settlementId: b.settlementId,
   };
 }

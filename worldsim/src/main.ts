@@ -12,6 +12,7 @@ import { BrainClient } from './llm/brainClient';
 import { startThinking } from './llm/thinking';
 import { ChatBox } from './ui/chat';
 import { setupSettings } from './ui/settings';
+import { setupSaves } from './ui/saves';
 
 async function main(): Promise<void> {
   // The seed comes from the URL (?seed=123) so worlds can be shared.
@@ -45,6 +46,11 @@ async function main(): Promise<void> {
   const brain = new BrainClient();
   const chat = new ChatBox(sim, brain);
   setupSettings(brain, hud.actions);
+  const saves = setupSaves(sim, hud.actions, () => {
+    renderer.reset();
+    chat.close();
+  });
+  sim.on('error', ({ message }) => alert(`Problem: ${message}`));
   startThinking(sim, brain, () => hud.paused);
 
   attachInput(renderer.view, renderer.camera, {
@@ -61,7 +67,12 @@ async function main(): Promise<void> {
     renderer.camera.centerOn(spawn.x + 0.5, spawn.y + 0.5);
     renderer.camera.zoom = 22;
     document.getElementById('loading')?.remove();
+    if (!continueOffered) {
+      continueOffered = true;
+      void saves.offerContinue();
+    }
   });
+  let continueOffered = false;
   sim.on('snapshot', ({ snap }) => {
     renderer.applySnapshot(snap);
     hud.update(snap);

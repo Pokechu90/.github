@@ -33,7 +33,9 @@ export function updateHealthDaily(world: World): void {
     for (let k = 0; k < 3 && town.length; k++) contacts.push(town[randInt(rng, 0, town.length - 1)]);
     for (const other of contacts) {
       if (other.id === carrier.id || other.illness) continue;
-      const hours = other.homeId === carrier.homeId ? 10 : 1.5;
+      const s = world.settlement(carrier.settlementId);
+      const quarantine = s?.laws.includes('Quarantine of the sick') ? 0.4 : 1;
+      const hours = (other.homeId === carrier.homeId ? 10 : 1.5) * quarantine;
       const p = 1 - Math.pow(1 - d.contagion * susceptibility(world, other, winter), hours);
       if (chance(rng, p)) infect(world, other, carrier.illness!.disease, carrier);
     }
@@ -77,13 +79,13 @@ export function updateHealthDaily(world: World): void {
   }
 }
 
-function susceptibility(_world: World, n: Npc, winter: boolean): number {
+function susceptibility(world: World, n: Npc, winter: boolean): number {
   let f = 1;
   const age = ageYears(n);
   if (age < 4) f *= 1.8;
   if (age > 60) f *= 1.6;
   if (n.needs.hunger > 0.6) f *= 1.7;
-  if (winter) f *= 1.5;
+  if (winter) f *= (world.settlement(n.settlementId)?.stock.cloth ?? 0) > 1 ? 1.15 : 1.5;
   if (n.homeId < 0) f *= 1.3;
   return f;
 }
@@ -106,7 +108,8 @@ export function infect(world: World, n: Npc, disease: string, from: Npc | null):
   const sickHere = world.residentsOf(s.id).filter((p) => p.illness?.disease === disease).length;
   const key = `${s.id}:${disease}`;
   const last = outbreakLogged.get(key) ?? -999;
-  if (sickHere >= Math.max(3, world.residentsOf(s.id).length * 0.15) && day - last > 30) {
+  const serious = d.lethality >= 0.005;
+  if (serious && sickHere >= Math.max(3, world.residentsOf(s.id).length * 0.15) && day - last > 60) {
     outbreakLogged.set(key, day);
     world.log(`An outbreak of ${d.name.toLowerCase()} is spreading in ${s.name} (${sickHere} sick).`, 'disease', n.id);
   } else if (sickHere === 1 && (d.lethality >= 0.02) && day - last > 30) {

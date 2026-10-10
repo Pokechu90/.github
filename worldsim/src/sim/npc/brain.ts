@@ -55,7 +55,8 @@ export function decide(world: World, n: Npc): void {
     add('work', workHours ? duty + urgency : 0.05 + urgency * 0.3, urgency > 0.3 ? 'needed' : 'duty');
   } else if (age >= 3) {
     if (workHours) add('play', 0.55 + t.extraversion * 0.2, 'play');
-    if (workHours && age >= 6) add('learn', 0.35 + t.openness * 0.35, 'learn');
+    const school = world.settlement(n.settlementId)?.laws.includes('Schooling for all children') ? 0.3 : 0;
+    if (workHours && age >= 6) add('learn', 0.35 + t.openness * 0.35 + school, 'learn');
   }
 
   // Social life
@@ -206,6 +207,9 @@ function computeMood(world: World, n: Npc): number {
   let m = 0.55 - needs * 1.3 + memoryMood(world, n);
   if (n.illness) m -= n.illness.severity * 0.5;
   if (n.partnerId >= 0) m += 0.1;
+  const s = world.settlement(n.settlementId);
+  if (s && s.stock.goods > 1) m += 0.08;
+  if (s && s.leaderId === n.id) m += 0.1;
   m -= (n.traits.neuroticism - 0.5) * 0.3;
   return Math.max(-1, Math.min(1, m));
 }

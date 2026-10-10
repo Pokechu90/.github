@@ -111,6 +111,7 @@ export function createNpc(world: World, o: NewNpcOptions): Npc {
     playerAffinity: 0,
     playerFamiliarity: 0,
     chatLog: [],
+    wealth: 0,
   };
 
   // Adults created at world start get skills that fit their age and personality.

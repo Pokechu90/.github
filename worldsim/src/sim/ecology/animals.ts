@@ -22,9 +22,9 @@ import { eatFruit } from './plants';
 /** Safety valve so a runaway population can never freeze the browser. */
 export const MAX_ANIMALS = 4000;
 
-export function spawnInitialAnimals(world: World, chunk: Chunk, rng: Rng): void {
+export function spawnInitialAnimals(world: World, chunk: Chunk, rng: Rng, force = false): void {
   // Only fairly grassy chunks start with a herd.
-  if (chunk.grassMax < 260 || !chance(rng, 0.35)) return;
+  if (chunk.grassMax < 260 || (!force && !chance(rng, 0.35))) return;
   const deer = ANIMALS[0];
   const size = randInt(rng, 3, 7);
   let cx = 0;
@@ -116,10 +116,18 @@ export function updateAnimals(world: World, dt: number): void {
   }
 }
 
-/** Once a day: mating season. */
+/** Once a day: mating season, and herds wandering into empty land. */
 export function updateAnimalsDaily(world: World): void {
   const season = getCalendar(world.state.time).season;
   const rng = world.state.rng;
+  // Animals from beyond the explored world slowly recolonise empty grassland.
+  if (world.state.animals.length < MAX_ANIMALS / 2) {
+    for (const chunk of world.state.chunks.values()) {
+      if (chunk.grassMax < 260 || !chance(rng, 0.0004)) continue;
+      if (world.animalsInChunk(chunk.key).length > 0) continue;
+      spawnInitialAnimals(world, chunk, rng, true);
+    }
+  }
   if (world.state.animals.length >= MAX_ANIMALS) return;
   for (const a of world.state.animals) {
     const sp = ANIMALS[a.species];

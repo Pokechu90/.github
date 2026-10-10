@@ -184,6 +184,8 @@ export interface Npc {
   /** How the NPC feels about the player (-1..1), and how well they know them. */
   playerAffinity: number;
   playerFamiliarity: number;
+  /** Personal money (once the settlement uses currency). */
+  wealth: number;
   /** The last few lines exchanged with the player, so later chats continue naturally. */
   chatLog: { from: 'player' | 'npc'; text: string; time: number }[];
 }
@@ -221,6 +223,8 @@ export interface Building {
   progress: number;
   /** For farms: crop growth 0..1. */
   crop: number;
+  /** Stored goods waiting to be collected (e.g. a harvested field). */
+  amount: number;
 }
 
 export interface Settlement {
@@ -248,6 +252,12 @@ export interface Settlement {
   abandoned: boolean;
   /** Relations with other settlements: id -> -1..1. */
   diplomacy: Record<number, number>;
+  /** Current leader (npc id) or -1. */
+  leaderId: number;
+  /** Day of the last migration out of here, raid, etc. (for pacing). */
+  lastMigrationDay: number;
+  lastRaidDay: number;
+  raids: number;
 }
 
 export interface WorldState {

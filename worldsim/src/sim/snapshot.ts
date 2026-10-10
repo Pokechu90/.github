@@ -13,6 +13,7 @@ import { fruitLevel } from './ecology/plants';
 import type { World } from './world';
 import { ageYears, fullName } from './npc/people';
 import { describeBuilding, describeNpc } from './npc/describe';
+import { describeSettlement } from './society/describe';
 import { JOBS } from '../shared/people';
 
 /** Chunks of margin kept loaded around the visible area. */
@@ -36,6 +37,14 @@ export class ViewTracker {
   private sentBuildingsView = '';
   private lastPeopleList = 0;
   selected: SelectTarget | null = null;
+
+  /** Forget what the page has seen (after loading a different world). */
+  reset(): void {
+    this.sentTerrain.clear();
+    this.sentPlants.clear();
+    this.sentBuildingsVersion = -1;
+    this.selected = null;
+  }
 
   setViewport(v: Viewport): void {
     if (!v.detail) this.sentPlants.clear();
@@ -241,6 +250,7 @@ export class ViewTracker {
       return { kind: 'gone', text: dead ? `${dead.name} died of ${dead.cause}.` : 'This person is gone.' };
     }
     if (sel.kind === 'building') return describeBuilding(world, sel.id);
+    if (sel.kind === 'settlement') return describeSettlement(world, sel.id);
     if (sel.kind === 'animal') {
       const a = world.animalById(sel.id);
       if (!a) return { kind: 'gone', text: 'This animal has died.' };

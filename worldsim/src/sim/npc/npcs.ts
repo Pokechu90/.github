@@ -77,7 +77,10 @@ function updateNeeds(world: World, n: Npc, dt: number, night: boolean): void {
   const home = world.building(n.homeId);
   const atHome = home && Math.hypot(home.x - n.x, home.y - n.y) < 2;
   let target = 0;
-  if (night && !atHome && a !== 'sleep') target += 0.5 + n.traits.neuroticism * 0.4;
+  if (night && !atHome && a !== 'sleep') {
+    const watch = world.settlement(n.settlementId)?.laws.includes('Night watch') ? 0.5 : 1;
+    target += (0.5 + n.traits.neuroticism * 0.4) * watch;
+  }
   if (n.homeId < 0) target += 0.25;
   if (n.illness) target += 0.15;
   nd.safety += (Math.min(1, target) - nd.safety) * Math.min(1, dt / 90);

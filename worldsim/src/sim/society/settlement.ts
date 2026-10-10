@@ -31,7 +31,7 @@ export function foundSettlement(world: World, x: number, y: number, parentId = -
     foundedDay: Math.floor(world.state.time / 1440),
     tier: 'camp',
     stock: emptyStock(),
-    tech: parent ? parent.tech.slice() : [],
+    tech: parent ? parent.tech.slice() : ['fire'],
     research: {},
     laws: [],
     culture: parent ? { name: parent.culture.name, traits: parent.culture.traits.slice() } : { name: `${placeName(() => nextFloat(rng))}folk`, traits: [] },
@@ -41,6 +41,10 @@ export function foundSettlement(world: World, x: number, y: number, parentId = -
     parentId,
     abandoned: false,
     diplomacy: {},
+    leaderId: -1,
+    lastMigrationDay: Math.floor(world.state.time / 1440),
+    lastRaidDay: -999,
+    raids: 0,
   };
   world.state.settlements.push(s);
   placeBuilding(world, s, 'campfire', s.x, s.y, 1);
@@ -60,7 +64,7 @@ function uniqueName(world: World): string {
 }
 
 export function placeBuilding(world: World, s: Settlement, kind: BuildingKind, x: number, y: number, progress = 0): Building {
-  const b: Building = { id: world.newId(), kind, x, y, settlementId: s.id, progress, crop: 0 };
+  const b: Building = { id: world.newId(), kind, x, y, settlementId: s.id, progress, crop: 0, amount: 0 };
   world.state.buildings.push(b);
   // Clear plants from the footprint.
   const r = BUILDINGS[kind].size;
@@ -136,7 +140,8 @@ export function homeResidents(world: World, homeId: number): Npc[] {
 export function updateSettlementDaily(world: World, s: Settlement): void {
   for (const [k, info] of Object.entries(RESOURCES)) {
     const key = k as ResourceType;
-    if (info.spoilPerDay > 0) s.stock[key] = Math.max(0, s.stock[key] * (1 - info.spoilPerDay));
+    const storage = s.tech.includes('pottery') ? 0.5 : 1;
+    if (info.spoilPerDay > 0) s.stock[key] = Math.max(0, s.stock[key] * (1 - info.spoilPerDay * storage));
   }
   planHousing(world, s);
   assignHomes(world, s);

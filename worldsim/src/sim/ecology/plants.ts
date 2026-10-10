@@ -51,8 +51,12 @@ export function spawnInitialPlants(world: World, chunk: Chunk, rng: Rng): void {
   }
 }
 
-/** One day passes for every plant in the chunk. */
-export function updatePlantsDaily(world: World, chunk: Chunk): void {
+/**
+ * `days` days pass for every plant in the chunk. Chunks far from anyone are
+ * updated in bigger steps (e.g. every 10 days), which is much cheaper and
+ * statistically the same.
+ */
+export function updatePlantsDaily(world: World, chunk: Chunk, days = 1): void {
   const time = world.state.time;
   const cal = getCalendar(time);
   const rng = world.state.rng;
@@ -66,7 +70,7 @@ export function updatePlantsDaily(world: World, chunk: Chunk): void {
     const p = chunk.plants[i];
     const sp = PLANTS[p.species];
     const before = { stage: p.stage, fruit: fruitLevel(sp, p) };
-    p.ageDays += 1;
+    p.ageDays += days;
 
     // Dead trees eventually fall and rot, freeing the space.
     if (p.stage === PlantStage.Dead) {
@@ -79,14 +83,14 @@ export function updatePlantsDaily(world: World, chunk: Chunk): void {
 
     // Seeds wait in the soil until spring, and don't last forever.
     if (p.stage === PlantStage.Seed) {
-      if (cal.season === 0 && chance(rng, 0.12)) {
+      if (cal.season === 0 && chance(rng, 1 - Math.pow(0.88, days))) {
         p.stage = PlantStage.Sprout;
         p.ageDays = sp.annual ? cal.dayOfYear : 0;
       } else if (!sp.annual && p.ageDays > DAYS_PER_YEAR * 2) {
         removePlantAt(world, chunk, i);
         changed = true;
         continue;
-      } else if (sp.annual && cal.season === 3 && cal.dayOfSeason === 15 && chance(rng, 0.35)) {
+      } else if (sp.annual && cal.season === 3 && Math.abs(cal.dayOfSeason - 15) < days && chance(rng, 0.35)) {
         removePlantAt(world, chunk, i); // seed eaten or rotted over winter
         changed = true;
         continue;
@@ -97,12 +101,12 @@ export function updatePlantsDaily(world: World, chunk: Chunk): void {
 
     // Frost damage and slow recovery.
     const localTemp = chunkTileTemp(chunk, p) + tempOffset;
-    if (localTemp < sp.minTemp) p.health -= 0.06;
-    else p.health = Math.min(1, p.health + 0.02);
+    if (localTemp < sp.minTemp) p.health -= 0.06 * days;
+    else p.health = Math.min(1, p.health + 0.02 * days);
 
     // Annuals: drop seeds in autumn, then die back to a seed over winter.
     if (sp.annual) {
-      if (cal.season === 2 && p.stage === PlantStage.Mature && chance(rng, sp.spreadChance)) {
+      if (cal.season === 2 && p.stage === PlantStage.Mature && chance(rng, sp.spreadChance * days)) {
         trySpread(world, sp, p);
       }
       if (cal.season === 3) p.stage = PlantStage.Seed;
@@ -123,7 +127,7 @@ export function updatePlantsDaily(world: World, chunk: Chunk): void {
         if (
           p.stage >= PlantStage.Mature &&
           cal.season === sp.spreadSeason &&
-          chance(rng, sp.spreadChance * p.health)
+          chance(rng, sp.spreadChance * p.health * days)
         ) {
           trySpread(world, sp, p);
         }
@@ -135,9 +139,9 @@ export function updatePlantsDaily(world: World, chunk: Chunk): void {
       const f = sp.fruit;
       if ((p.stage === PlantStage.Mature || p.stage === PlantStage.Old) && inWindow(cal.dayOfYear, f.fromDay, f.toDay)) {
         const perDay = (f.max / (f.toDay - f.fromDay)) * 1.6 * p.health * (1 + weather.rain * 0.5);
-        p.fruit = Math.min(f.max, p.fruit + perDay);
+        p.fruit = Math.min(f.max, p.fruit + perDay * days);
       } else if (p.fruit > 0) {
-        p.fruit = p.fruit < 0.5 ? 0 : p.fruit * 0.75;
+        p.fruit = p.fruit < 0.5 ? 0 : p.fruit * Math.pow(0.75, days);
       }
     }
 
@@ -148,14 +152,14 @@ export function updatePlantsDaily(world: World, chunk: Chunk): void {
 }
 
 /** Grazing food regrows when it is warm enough, faster with rain. */
-export function updateGrassDaily(world: World, chunk: Chunk): void {
+export function updateGrassDaily(world: World, chunk: Chunk, days = 1): void {
   const centre = (CHUNK_SIZE / 2) | 0;
   const w = world.weatherAt(chunk.cx * CHUNK_SIZE + centre, chunk.cy * CHUNK_SIZE + centre);
   const temp = chunk.terrain.avgTemp + seasonTempOffset(world.state.time);
   let rate = 0;
   if (temp > 4 && temp < 34) rate = 0.07 * Math.min(1, (temp - 4) / 10);
   rate *= 1 + w.rain;
-  chunk.grass = Math.min(chunk.grassMax, chunk.grass + chunk.grassMax * rate);
+  chunk.grass = Math.min(chunk.grassMax, chunk.grass + chunk.grassMax * rate * days);
 }
 
 /** Food value an animal gets from eating one piece of this plant's fruit. */

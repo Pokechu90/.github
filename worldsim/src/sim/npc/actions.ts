@@ -40,6 +40,16 @@ const JOB_TASKS: Record<string, string[]> = {
 // ------------------------------------------------------------------ walking
 
 export function walkTo(world: World, n: Npc, x: number, y: number, then: NpcAction['kind'], extra: Partial<NpcAction> = {}): boolean {
+  // Long journeys (migrants, traders) may cross land nobody has seen yet.
+  const far = Math.hypot(x - n.x, y - n.y);
+  if (far > 40) {
+    for (let d = 0; d <= far; d += CHUNK_SIZE / 2) {
+      const px = n.x + ((x - n.x) / far) * d;
+      const py = n.y + ((y - n.y) / far) * d;
+      world.ensureChunk(Math.floor(px / CHUNK_SIZE), Math.floor(py / CHUNK_SIZE));
+    }
+    world.ensureChunk(Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE));
+  }
   const path = findPath(world, n.x, n.y, x, y);
   if (!path) return false;
   n.path = path;
@@ -70,14 +80,24 @@ function stepAlongPath(world: World, n: Npc, dt: number): boolean {
     const dy = ty - n.y;
     const d = Math.hypot(dx, dy);
     if (Math.abs(dx) > 0.05) n.facing = dx > 0 ? 1 : -1;
+    const step = Math.min(d, budget);
+    const nx = n.x + (dx / (d || 1)) * step;
+    const ny = n.y + (dy / (d || 1)) * step;
+    // Never wade into a lake or the sea: stop and think again.
+    if (!world.isWalkable(nx, ny) && world.isWalkable(n.x, n.y)) {
+      n.path = [];
+      n.dest = null;
+      n.action.timer = 0;
+      return false;
+    }
     if (d <= budget) {
       n.x = tx;
       n.y = ty;
       budget -= d;
       n.pathIndex += 2;
     } else {
-      n.x += (dx / d) * budget;
-      n.y += (dy / d) * budget;
+      n.x = nx;
+      n.y = ny;
       budget = 0;
     }
   }
@@ -362,7 +382,7 @@ function doWork(world: World, n: Npc, dt: number): void {
       world.release(a.targetId ?? -1);
       if (got) {
         const amount = got.amount * (0.7 + skillOf('foraging') * 0.6);
-        gainSkill(n, 'foraging', 0.004);
+        gainSkill(world, n, 'foraging', 0.004);
         if (task === 'forage-eat') {
           const portions = amount / 1;
           n.needs.hunger = Math.max(0, n.needs.hunger - portions * RESOURCES[got.resource].food);
@@ -399,7 +419,7 @@ function doWork(world: World, n: Npc, dt: number): void {
       }
       if (a.timer > dt) return;
       const p = (0.18 + skillOf('hunting') * 0.45) * tools * efficiency;
-      gainSkill(n, 'hunting', 0.006);
+      gainSkill(world, n, 'hunting', 0.006);
       if (chance(rng, p)) {
         world.killAnimal(deer, 'hunted');
         world.release(deer.id);
@@ -427,7 +447,7 @@ function doWork(world: World, n: Npc, dt: number): void {
         const caught = (dt / 60) * (0.6 + skillOf('fishing') * 1.0) * stock * tools * efficiency;
         chunk.fish = Math.max(0, chunk.fish - caught);
         addCarry(n, 'fish', caught);
-        gainSkill(n, 'fishing', 0.0008 * dt / 10);
+        gainSkill(world, n, 'fishing', 0.0008 * dt / 10);
       }
       if (a.timer <= dt) deliver(world, n);
       return;
@@ -440,7 +460,7 @@ function doWork(world: World, n: Npc, dt: number): void {
         const dead = found.plant.stage === PlantStage.Dead;
         removePlantOnTile(world, found.chunk, found.plant.x, found.plant.y);
         addCarry(n, 'wood', (dead ? 5 : 9) * (0.6 + skillOf('woodcutting') * 0.6) * tools * efficiency);
-        gainSkill(n, 'woodcutting', 0.006);
+        gainSkill(world, n, 'woodcutting', 0.006);
         deliver(world, n);
       } else {
         n.action = { kind: 'idle', timer: 5 };
@@ -452,14 +472,14 @@ function doWork(world: World, n: Npc, dt: number): void {
       const chunk = world.chunkAtTile(n.x, n.y);
       const richness = chunk ? 0.5 + 0.5 * (chunk.grass / Math.max(1, chunk.grassMax)) : 0.5;
       addCarry(n, 'fruit', (1.0 + skillOf('foraging') * 1.0) * richness * efficiency * (a.timer + 75) / 75);
-      gainSkill(n, 'foraging', 0.004);
+      gainSkill(world, n, 'foraging', 0.004);
       deliver(world, n);
       return;
     }
     case 'quarry': {
       if (a.timer > dt) return;
       addCarry(n, 'stone', (3 + skillOf('building') * 4) * tools * efficiency);
-      gainSkill(n, 'building', 0.004);
+      gainSkill(world, n, 'building', 0.004);
       deliver(world, n);
       return;
     }
@@ -471,7 +491,7 @@ function doWork(world: World, n: Npc, dt: number): void {
       }
       const info = BUILDINGS[site.kind];
       site.progress = Math.min(1, site.progress + ((dt / 60) / Math.max(1, info.work)) * (0.6 + skillOf('building') * 0.8) * tools * efficiency);
-      gainSkill(n, 'building', 0.0006 * dt / 10);
+      gainSkill(world, n, 'building', 0.0006 * dt / 10);
       if (site.progress >= 1) finishBuilding(world, site, n);
       world.markBuildingsChanged(site);
       return;
@@ -485,7 +505,7 @@ function doWork(world: World, n: Npc, dt: number): void {
         patient.health = Math.min(1, patient.health + 0.1);
         rel(patient, n.id).affinity = Math.min(1, rel(patient, n.id).affinity + 0.08);
         remember(world, patient, `${n.firstName} cared for me while I was sick.`, { importance: 0.4, feeling: 0.5, about: n.id });
-        gainSkill(n, 'medicine', 0.01);
+        gainSkill(world, n, 'medicine', 0.01);
       }
       n.action = { kind: 'idle', timer: 10 };
       return;
@@ -540,6 +560,7 @@ export function deliver(world: World, n: Npc): boolean {
     return false;
   }
   if (Math.hypot(pile.x - n.x, pile.y - n.y) < 1.8) {
+    world.hooks.onDelivered?.(world, n, n.carrying.type, n.carrying.amount);
     s.stock[n.carrying.type] += n.carrying.amount;
     n.carrying = null;
     n.action = { kind: 'idle', timer: 5 };
@@ -559,15 +580,18 @@ export function deliver(world: World, n: Npc): boolean {
 export function finishDelivery(world: World, n: Npc): void {
   const s = world.settlement(n.settlementId);
   if (s && n.carrying) {
+    world.hooks.onDelivered?.(world, n, n.carrying.type, n.carrying.amount);
     s.stock[n.carrying.type] += n.carrying.amount;
     n.carrying = null;
   }
 }
 
-export function gainSkill(n: Npc, skill: SkillKey, amount: number): void {
+export function gainSkill(world: World, n: Npc, skill: SkillKey, amount: number): void {
   // Learning slows as you master something; curious people learn faster.
   const v = n.skills[skill];
   n.skills[skill] = clamp01(v + amount * (1 - v) * (0.6 + n.traits.openness * 0.8));
+  // Practice also gives the settlement ideas (roughly 0.004 skill = 1 hour of work).
+  world.hooks.onPractice?.(world, n, skill, amount * 250);
 }
 
 function learnFromParent(world: World, n: Npc, dt: number): void {
@@ -587,7 +611,7 @@ function learnFromParent(world: World, n: Npc, dt: number): void {
     return;
   }
   const skill = (JOBS[teacher.job]?.skill ?? 'foraging') as SkillKey;
-  gainSkill(n, skill, 0.0005 * dt / 10);
+  gainSkill(world, n, skill, 0.0005 * dt / 10);
 }
 
 // ------------------------------------------------------------------ searches

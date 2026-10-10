@@ -68,10 +68,14 @@ export class Hud {
 
     // Delegated clicks inside the panel.
     $('panel').addEventListener('click', (e) => {
-      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-npc],[data-action]');
+      const el = (e.target as HTMLElement).closest<HTMLElement>('[data-npc],[data-action],[data-town]');
       if (!el) return;
       if (el.dataset.npc) {
         cb.onSelect({ kind: 'npc', id: Number(el.dataset.npc) }, true);
+        this.showTab('inspect');
+      }
+      if (el.dataset.town) {
+        cb.onSelect({ kind: 'settlement', id: Number(el.dataset.town) }, true);
         this.showTab('inspect');
       }
       const action = el.dataset.action;
@@ -175,8 +179,12 @@ export class Hud {
       el.innerHTML = this.npcHtml(sel);
       return;
     }
+    if (sel.kind === 'settlement') {
+      el.innerHTML = this.townHtml(sel);
+      return;
+    }
     if (sel.kind === 'building') {
-      el.innerHTML = `<h3>${esc(sel.title)}</h3><p class="muted">${esc(sel.settlement)}</p>
+      el.innerHTML = `<h3>${esc(sel.title)}</h3><p class="muted"><a data-town="${sel.settlementId}">${esc(sel.settlement)}</a></p>
         ${sel.residents.length ? `<h4>Lives here</h4><ul>${sel.residents.map((r) => `<li><a data-npc="${r.id}">${esc(r.name)}</a></li>`).join('')}</ul>` : ''}
         <ul>${sel.notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>`;
       return;
@@ -227,6 +235,23 @@ export class Hud {
       <h4>Memories</h4>${mems}`;
   }
 
+  private townHtml(t: Extract<SelectedInfo, { kind: 'settlement' }>): string {
+    const research = t.researching
+      ? `<p>Researching <b>${esc(t.researching.name)}</b>: ${esc(t.researching.description)}</p>${bar('Progress', t.researching.progress, true)}`
+      : '<p class="muted">Nothing left to discover here.</p>';
+    return `
+      <h3>${esc(t.title)}</h3>
+      <p class="muted">${esc(t.subtitle)}</p>
+      <p>Leader: ${t.leader ? `<a data-npc="${t.leader.id}">${esc(t.leader.name)}</a>` : '<span class="muted">none</span>'}</p>
+      <p>Culture: ${esc(t.culture)}</p>
+      <h4>Laws</h4>${t.laws.length ? `<ul>${t.laws.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p class="muted">No written laws.</p>'}
+      <h4>Knowledge</h4><p>${t.tech.map(esc).join(' · ')}</p>${research}
+      <h4>Stores${t.treasury !== null ? ` · treasury ${t.treasury} coins` : ''}</h4>
+      <table class="stock">${t.stock.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.amount}</td>${r.price !== null ? `<td class="muted">${r.price.toFixed(1)}c</td>` : ''}</tr>`).join('')}</table>
+      <h4>Buildings</h4><p>${t.buildings.join(', ')}</p>
+      ${t.neighbours.length ? `<h4>Neighbours</h4><ul class="links">${t.neighbours.map((n) => `<li><a data-town="${n.id}">${esc(n.name)}</a> <span class="tag ${n.relation === 'hostile' || n.relation === 'tense' ? 'bad' : 'good'}">${n.relation}</span></li>`).join('')}</ul>` : ''}`;
+  }
+
   // ------------------------------------------------------------- other tabs
 
   private renderPeople(): void {
@@ -253,7 +278,7 @@ export class Hud {
       .slice()
       .sort((a, b) => b.population - a.population)
       .slice(0, 12)
-      .map((t) => `<tr><td>${esc(t.name)} <span class="muted">${t.tier}</span></td><td>${t.population}</td></tr>`)
+      .map((t) => `<tr><td><a data-town="${t.id}">${esc(t.name)}</a> <span class="muted">${t.tier}</span></td><td>${t.population}</td></tr>`)
       .join('');
     const el = $('tab-world');
     if (!el.querySelector('canvas')) {

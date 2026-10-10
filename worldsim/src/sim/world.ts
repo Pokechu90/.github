@@ -6,12 +6,12 @@
  * is what keeps the game swappable between 2D, 3D, or a game engine later.
  */
 import { BIOMES, Biome, CHUNK_SIZE, TerrainGenerator, chunkKey } from '../shared/terrain';
-import { hashInts, makeRng } from '../shared/rng';
+import { hashInts, makeRng, nextFloat } from '../shared/rng';
 import { MINUTES_PER_DAY, START_TIME, getCalendar } from '../shared/time';
 import { ANIMALS, PLANTS, PlantStage } from '../shared/species';
 import type { WeatherView } from '../shared/protocol';
 import { Climate } from './climate';
-import type { Animal, Building, Chunk, JobKey, Npc, Plant, Settlement, WorldState } from './state';
+import type { Animal, Building, Chunk, JobKey, Npc, Plant, ResourceType, Settlement, SkillKey, WorldState } from './state';
 import { removePlantOnTile, spawnInitialPlants, updateGrassDaily, updatePlantsDaily } from './ecology/plants';
 import { spawnInitialAnimals, updateAnimals, updateAnimalsDaily } from './ecology/animals';
 import { updateNpcs, createStartingSettlement } from './npc/npcs';
@@ -19,6 +19,7 @@ import { updateHealthDaily } from './npc/health';
 import { updateRomanceDaily } from './npc/social';
 import { assignJobs, updateLifeDaily } from './npc/life';
 import { totalFood, updateSettlementDaily } from './society/settlement';
+import { installCivilization } from './society';
 
 /**
  * Extension points used by later systems (economy, technology, migration,
@@ -33,6 +34,14 @@ export interface WorldHooks {
   canMigrate?: (world: World, n: Npc) => boolean;
   requestMigration?: (world: World, n: Npc) => void;
   techName?: (id: string) => string;
+  onTech?: Array<(world: World, s: Settlement, techId: string) => void>;
+  onPractice?: (world: World, n: Npc, skill: SkillKey, hours: number) => void;
+  onProduced?: (world: World, n: Npc, resource: ResourceType, amount: number) => void;
+  tryTradeTask?: (world: World, n: Npc, task: string) => boolean;
+  doTradeWork?: (world: World, n: Npc, dt: number) => void;
+  traderDemand?: (world: World, s: Settlement, workers: number) => number;
+  onDelivered?: (world: World, n: Npc, resource: ResourceType, amount: number) => void;
+  exile?: (world: World, n: Npc) => void;
   tick?: Array<(world: World, dt: number) => void>;
 }
 
@@ -61,7 +70,7 @@ export class World {
   readonly lastLlmDecision = new Map<number, number>();
   /** Bumped whenever buildings change, so the renderer knows to update. */
   buildingsVersion = 0;
-  readonly hooks: WorldHooks = { daily: [], tick: [] };
+  readonly hooks: WorldHooks = { daily: [], tick: [], onTech: [] };
 
   constructor(seed: number) {
     this.terrain = new TerrainGenerator(seed);
@@ -83,6 +92,13 @@ export class World {
       events: [],
     };
     this.log(`The world was born from seed ${seed}.`, 'world');
+    installCivilization(this);
+  }
+
+  /** Rebuilds the lookup tables after loading a save. */
+  afterLoad(): void {
+    this.buildingsDirty = true;
+    this.rebuildIndexes();
   }
 
   /** Places the first settlers. Call once for a brand-new world. */
@@ -164,19 +180,45 @@ export class World {
 
   // ---------- Chunks & tiles ----------
 
+  /** Fast numeric lookup for chunks (string keys are slow in hot loops). */
+  private chunkIndex = new Map<number, Chunk>();
+  private lastChunk: Chunk | undefined;
+
   getChunk(cx: number, cy: number): Chunk | undefined {
-    return this.state.chunks.get(chunkKey(cx, cy));
+    const last = this.lastChunk;
+    if (last && last.cx === cx && last.cy === cy) return last;
+    const c = this.chunkIndex.get((cx + 100000) * 200000 + (cy + 100000));
+    if (c) this.lastChunk = c;
+    return c;
   }
 
   chunkAtTile(x: number, y: number): Chunk | undefined {
     return this.getChunk(Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE));
   }
 
+  /** Adds a chunk to the world (and the fast index). */
+  addChunk(chunk: Chunk): void {
+    this.state.chunks.set(chunk.key, chunk);
+    this.chunkIndex.set((chunk.cx + 100000) * 200000 + (chunk.cy + 100000), chunk);
+  }
+
   /** Returns the chunk, generating terrain, plants and animals if it's new. */
   ensureChunk(cx: number, cy: number): Chunk {
     const existing = this.getChunk(cx, cy);
     if (existing) return existing;
+    const chunk = this.createChunk(cx, cy);
+    this.addChunk(chunk);
 
+    // Chunk contents depend only on the seed and position, not on when or in
+    // what order the player explores.
+    const rng = makeRng(hashInts(this.state.seed, cx, cy, 777));
+    spawnInitialPlants(this, chunk, rng);
+    spawnInitialAnimals(this, chunk, rng);
+    return chunk;
+  }
+
+  /** Terrain and derived data for a chunk, without any living things (used by loading too). */
+  createChunk(cx: number, cy: number): Chunk {
     const terrain = this.terrain.generateChunk(cx, cy);
     let grassMax = 0;
     let water = 0;
@@ -201,13 +243,6 @@ export class World {
       fishMax: water * 0.5,
       version: 0,
     };
-    this.state.chunks.set(chunk.key, chunk);
-
-    // Chunk contents depend only on the seed and position, not on when or in
-    // what order the player explores.
-    const rng = makeRng(hashInts(this.state.seed, cx, cy, 777));
-    spawnInitialPlants(this, chunk, rng);
-    spawnInitialAnimals(this, chunk, rng);
     return chunk;
   }
 
@@ -425,6 +460,11 @@ export class World {
   }
 
   // ---------- Bookkeeping ----------
+
+  /** A random number 0..1 from the world's seeded generator. */
+  rand(): number {
+    return nextFloat(this.state.rng);
+  }
 
   newId(): number {
     return this.state.nextId++;

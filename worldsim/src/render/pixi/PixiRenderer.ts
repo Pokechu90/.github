@@ -300,11 +300,7 @@ export class PixiRenderer implements WorldRenderer {
     if (!this.wantsDetail()) {
       // Zoomed out: clicking a town label selects nothing but recentres there.
       for (const s of this.snap?.settlements ?? []) {
-        if (Math.hypot(s.x - p.x, s.y - p.y) < 30 / this.camera.zoom + 4) {
-          this.camera.centerOn(s.x, s.y);
-          this.camera.zoom = 16;
-          return null;
-        }
+        if (Math.hypot(s.x - p.x, s.y - p.y) < 30 / this.camera.zoom + 4) return { kind: 'settlement', id: s.id };
       }
       return null;
     }
@@ -578,6 +574,21 @@ export class PixiRenderer implements WorldRenderer {
     }
     const s = scale / UNITS_PER_TILE;
     sprite.scale.set(Math.sign(sprite.scale.x || 1) * s, s);
+  }
+
+  /** Forget everything drawn (e.g. after loading another world). */
+  reset(): void {
+    this.clearObjects();
+    for (const key of [...this.chunks.keys()]) this.dropChunk(key);
+    for (const g of this.buildings.values()) {
+      g.sprite.destroy();
+      g.flame?.destroy();
+      g.light?.destroy();
+    }
+    this.buildings.clear();
+    for (const t of this.townLabels.values()) t.destroy();
+    this.townLabels.clear();
+    this.follow = null;
   }
 
   private clearObjects(): void {

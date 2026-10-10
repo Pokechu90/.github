@@ -85,11 +85,11 @@ export function updateRomanceDaily(world: World): void {
     if (a.partnerId < 0) {
       // Find the person they're most in love with, if it's mutual.
       let best: Npc | null = null;
-      let bestR = 0.65;
+      let bestR = 0.55;
       for (const [idStr, r] of Object.entries(a.relationships)) {
         if (r.romance < bestR) continue;
         const b = world.npcById(Number(idStr));
-        if (!b || b.partnerId >= 0 || (b.relationships[a.id]?.romance ?? 0) < 0.65) continue;
+        if (!b || b.partnerId >= 0 || (b.relationships[a.id]?.romance ?? 0) < 0.55) continue;
         best = b;
         bestR = r.romance;
       }

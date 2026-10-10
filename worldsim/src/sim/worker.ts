@@ -10,6 +10,8 @@ import { World } from './world';
 import { ViewTracker } from './snapshot';
 import { applyChat, applyGoal, buildContext } from './npc/context';
 import { ageYears } from './npc/people';
+import { deserialize, serialize } from './save';
+import { getCalendar } from '../shared/time';
 
 const LOOP_MS = 50;
 const SNAPSHOT_MS = 66;
@@ -67,6 +69,19 @@ ctx.onmessage = (e) => {
     }
     case 'focusRequest':
       ctx.postMessage({ type: 'focusContexts', requestId: msg.requestId, contexts: world ? focusContexts(world, msg.max) : [] });
+      break;
+    case 'save':
+      if (world) ctx.postMessage({ type: 'saveData', requestId: msg.requestId, data: serialize(world), year: getCalendar(world.state.time).year });
+      break;
+    case 'load':
+      try {
+        world = deserialize(msg.data);
+        view.reset();
+        const home = world.state.settlements.find((s) => !s.abandoned);
+        ctx.postMessage({ type: 'ready', seed: world.state.seed, spawn: home ? { x: home.x, y: home.y } : world.terrain.findSpawn() });
+      } catch (err) {
+        ctx.postMessage({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+      }
       break;
     case 'applyGoal': {
       const n = world?.npcById(msg.id);

@@ -116,3 +116,10 @@ dialog#settings input:not([type]) , dialog#settings input[type=text] { width: 10
 dialog#settings input[type=range] { width: 100%; }
 #actions { display: inline-flex; gap: 4px; margin-right: 8px; }
 @media (max-width: 760px) { #chat { transform: translateX(-50%); width: calc(100vw - 16px); bottom: 40vh; } }
+
+dialog#saves { background: #161b22; color: var(--text); border: 1px solid var(--border); border-radius: 12px; width: min(460px, 92vw); }
+dialog#saves::backdrop { background: rgba(0,0,0,0.5); }
+.save-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0; }
+.toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--accent); padding: 8px 12px; border-radius: 10px; z-index: 10; }
+table.stock { width: 100%; border-collapse: collapse; } table.stock td:nth-child(2), table.stock td:nth-child(3) { text-align: right; }
+[hidden] { display: none !important; }
