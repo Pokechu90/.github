@@ -18,6 +18,11 @@ export function updateNpcs(world: World, dt: number): void {
     updateNeeds(world, n, dt, night);
     n.ageDays += dt / 1440;
     if (updateInfant(world, n)) continue;
+    if (world.chatting.has(n.id)) {
+      n.action = { kind: 'talk', targetId: -2, timer: 30 };
+      n.path = [];
+      continue;
+    }
     // At high speed one tick can be an hour long: let people finish several
     // short actions within it instead of wasting the rest of the hour.
     let remaining = dt;

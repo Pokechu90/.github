@@ -5,6 +5,7 @@
  * world. They only exchange these messages. That is what lets us swap PixiJS
  * for Three.js (or a game engine) later without touching the simulation.
  */
+import type { ChatResult, DecideResult, NpcPromptContext } from './llm';
 
 // ---------- Page -> Simulation ----------
 
@@ -20,13 +21,23 @@ export type ToSim =
   | { type: 'setSpeed'; speed: number }
   /** What the camera can see, in tile coordinates. `detail` = show plants & animals. */
   | { type: 'viewport'; x0: number; y0: number; x1: number; y1: number; detail: boolean }
-  | { type: 'select'; target: SelectTarget | null };
+  | { type: 'select'; target: SelectTarget | null }
+  /** Ask for everything an NPC knows (to build an LLM prompt). */
+  | { type: 'npcContext'; id: number; requestId: number }
+  /** The player starts/stops talking to an NPC (they stop what they're doing). */
+  | { type: 'chat'; id: number; active: boolean }
+  | { type: 'chatResult'; id: number; playerText: string; result: ChatResult }
+  /** Ask which nearby NPCs would like an LLM to decide their next goal. */
+  | { type: 'focusRequest'; requestId: number; max: number }
+  | { type: 'applyGoal'; id: number; result: DecideResult }
 
 // ---------- Simulation -> Page ----------
 
 export type FromSim =
   | { type: 'ready'; seed: number; spawn: { x: number; y: number } }
-  | { type: 'snapshot'; snap: Snapshot };
+  | { type: 'snapshot'; snap: Snapshot }
+  | { type: 'npcContext'; requestId: number; context: NpcPromptContext | null }
+  | { type: 'focusContexts'; requestId: number; contexts: NpcPromptContext[] };
 
 export interface ChunkTerrainView {
   biomes: Uint8Array;

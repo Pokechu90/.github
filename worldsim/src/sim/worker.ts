@@ -8,6 +8,8 @@
 import type { FromSim, ToSim } from '../shared/protocol';
 import { World } from './world';
 import { ViewTracker } from './snapshot';
+import { applyChat, applyGoal, buildContext } from './npc/context';
+import { ageYears } from './npc/people';
 
 const LOOP_MS = 50;
 const SNAPSHOT_MS = 66;
@@ -48,8 +50,49 @@ ctx.onmessage = (e) => {
       view.selected = msg.target;
       lastSnapshot = 0; // respond right away
       break;
+    case 'npcContext': {
+      const n = world?.npcById(msg.id);
+      ctx.postMessage({ type: 'npcContext', requestId: msg.requestId, context: n && world ? buildContext(world, n) : null });
+      break;
+    }
+    case 'chat':
+      if (msg.active) world?.chatting.add(msg.id);
+      else world?.chatting.delete(msg.id);
+      break;
+    case 'chatResult': {
+      const n = world?.npcById(msg.id);
+      if (n && world) applyChat(world, n, msg.playerText, msg.result);
+      lastSnapshot = 0;
+      break;
+    }
+    case 'focusRequest':
+      ctx.postMessage({ type: 'focusContexts', requestId: msg.requestId, contexts: world ? focusContexts(world, msg.max) : [] });
+      break;
+    case 'applyGoal': {
+      const n = world?.npcById(msg.id);
+      if (n && world) applyGoal(world, n, msg.result);
+      break;
+    }
   }
 };
+
+/** NPCs near the player who could use an LLM to decide what to do next. */
+function focusContexts(w: World, max: number) {
+  const now = w.state.time;
+  const sel = view.selected?.kind === 'npc' ? w.npcById(view.selected.id) : undefined;
+  const nearby = view.focusCandidates(w);
+  const list = [...(sel ? [sel] : []), ...nearby.filter((n) => n !== sel)];
+  const out = [];
+  for (const n of list) {
+    if (out.length >= max) break;
+    if (ageYears(n) < 6 || n.action.kind === 'sleep' || w.chatting.has(n.id)) continue;
+    if (n.goal && n.goal.until > now) continue;
+    if (now - (w.lastLlmDecision.get(n.id) ?? -1e9) < 12 * 60) continue;
+    w.lastLlmDecision.set(n.id, now);
+    out.push(buildContext(w, n, true));
+  }
+  return out;
+}
 
 setInterval(() => {
   const now = performance.now();

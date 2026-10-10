@@ -57,6 +57,18 @@ export class ViewTracker {
     return out;
   }
 
+  /** People in view (only when zoomed in), nearest to the screen centre first. */
+  focusCandidates(world: World) {
+    if (!this.viewport.detail) return [];
+    const v = this.viewport;
+    const cx = (v.x0 + v.x1) / 2;
+    const cy = (v.y0 + v.y1) / 2;
+    return world.state.npcs
+      .filter((n) => n.x > v.x0 && n.x < v.x1 && n.y > v.y0 && n.y < v.y1)
+      .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))
+      .slice(0, 12);
+  }
+
   /** Generates missing visible chunks, nearest first, within a time budget. */
   generateVisible(world: World, budgetMs: number): void {
     const start = performance.now();

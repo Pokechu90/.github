@@ -162,6 +162,10 @@ function tryOption(world: World, n: Npc, kind: string): boolean {
 
 function pickConversationPartner(world: World, n: Npc): Npc | null {
   const rng = world.state.rng;
+  if (n.goal && n.goal.kind === 'socialize' && n.goal.targetId >= 0) {
+    const t = world.npcById(n.goal.targetId);
+    if (t && t.action.kind !== 'sleep' && Math.hypot(t.x - n.x, t.y - n.y) < 60) return t;
+  }
   let best: Npc | null = null;
   let bestScore = -Infinity;
   for (const o of world.residentsOf(n.settlementId)) {

@@ -8,6 +8,10 @@ import { PixiRenderer } from './render/pixi/PixiRenderer';
 import { attachInput } from './render/input';
 import { Hud } from './ui/hud';
 import { seedFromString } from './shared/rng';
+import { BrainClient } from './llm/brainClient';
+import { startThinking } from './llm/thinking';
+import { ChatBox } from './ui/chat';
+import { setupSettings } from './ui/settings';
 
 async function main(): Promise<void> {
   // The seed comes from the URL (?seed=123) so worlds can be shared.
@@ -36,8 +40,12 @@ async function main(): Promise<void> {
       pendingFocus = focus;
     },
     onFollow: (id) => (renderer.follow = id),
-    onTalk: (id) => window.dispatchEvent(new CustomEvent('worldsim:talk', { detail: id })),
+    onTalk: (id) => void chat.open(id),
   });
+  const brain = new BrainClient();
+  const chat = new ChatBox(sim, brain);
+  setupSettings(brain, hud.actions);
+  startThinking(sim, brain, () => hud.paused);
 
   attachInput(renderer.view, renderer.camera, {
     onClick: (sx, sy) => {

@@ -30,6 +30,9 @@ export interface WorldHooks {
   jobDemand?: (world: World, s: Settlement, workers: number) => Partial<Record<JobKey, number>>;
   onSettlementFounded?: (world: World, s: Settlement) => void;
   daily?: Array<(world: World) => void>;
+  canMigrate?: (world: World, n: Npc) => boolean;
+  requestMigration?: (world: World, n: Npc) => void;
+  techName?: (id: string) => string;
   tick?: Array<(world: World, dt: number) => void>;
 }
 
@@ -52,6 +55,10 @@ export class World {
   private buildingsDirty = true;
   /** Targets (plants, animals, patients) claimed by someone: target id -> npc id. */
   private reservations = new Map<number, number>();
+  /** NPCs currently talking with the player (they wait while you type). */
+  readonly chatting = new Set<number>();
+  /** When each NPC last had an LLM decide for them (game minutes). */
+  readonly lastLlmDecision = new Map<number, number>();
   /** Bumped whenever buildings change, so the renderer knows to update. */
   buildingsVersion = 0;
   readonly hooks: WorldHooks = { daily: [], tick: [] };
@@ -394,6 +401,10 @@ export class World {
 
   releaseAll(npcId: number): void {
     for (const [t, by] of this.reservations) if (by === npcId) this.reservations.delete(t);
+  }
+
+  techName(id: string): string {
+    return this.hooks.techName?.(id) ?? id;
   }
 
   assignJobsFor(s: Settlement): void {

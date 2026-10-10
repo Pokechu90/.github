@@ -22,6 +22,27 @@ export class SimClient {
     this.worker.postMessage(msg);
   }
 
+  private nextRequest = 1;
+
+  /** Sends a request and waits for the matching reply (by requestId). */
+  request<T extends 'npcContext' | 'focusContexts'>(
+    msg: ToSim & { requestId: number },
+    replyType: T,
+  ): Promise<Extract<FromSim, { type: T }>> {
+    const requestId = this.nextRequest++;
+    return new Promise((resolve) => {
+      const handler = (e: MessageEvent<FromSim>) => {
+        const d = e.data as FromSim & { requestId?: number };
+        if (d.type === replyType && d.requestId === requestId) {
+          this.worker.removeEventListener('message', handler);
+          resolve(d as Extract<FromSim, { type: T }>);
+        }
+      };
+      this.worker.addEventListener('message', handler);
+      this.worker.postMessage({ ...msg, requestId });
+    });
+  }
+
   on<T extends FromSim['type']>(type: T, handler: Handler<T>): void {
     ((this.handlers[type] ??= []) as Handler<T>[]).push(handler);
   }

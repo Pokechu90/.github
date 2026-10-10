@@ -184,6 +184,8 @@ export interface Npc {
   /** How the NPC feels about the player (-1..1), and how well they know them. */
   playerAffinity: number;
   playerFamiliarity: number;
+  /** The last few lines exchanged with the player, so later chats continue naturally. */
+  chatLog: { from: 'player' | 'npc'; text: string; time: number }[];
 }
 
 /** A person who has died: kept for family trees and history. */
