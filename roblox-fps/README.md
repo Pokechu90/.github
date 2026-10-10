@@ -82,7 +82,8 @@ Create these in Studio and paste in each file's contents. The names must match e
 - Bosses drop a rare reward: an attachment, a skin or a weapon.
 
 **Weapons**
-- 8 weapons with part-built viewmodels: pistol, SMG, assault rifle, burst rifle, pump shotgun, LMG, bolt-action sniper and a plasma rifle.
+- 8 weapons with detailed viewmodels modelled on real designs: pistol, SMG, assault rifle, burst rifle, pump shotgun, LMG, bolt-action sniper and a plasma rifle. They have rails with teeth, trigger guards, iron sights, ejection ports, muzzle devices, screws, magazines with rounds showing, a side saddle of shells, an ammo belt and gloved hands. Aiming puts your eye at a cheek weld behind the rear sight, and the stock is hidden while aimed.
+- Finishes use Roblox materials: walnut wood furniture, sandstone desert, snow and glacier arctic, foil-anodized red with carbon-look fabric, glowing circuit, cracked-lava scorch and polished gold.
 - Handling: recoil patterns you can learn, sway, bob, ADS, faster tactical reloads, shell-by-shell shotgun reloads, pump and bolt animations, and an inspect animation.
 - 5 upgrade tracks per weapon.
 - 5 attachments: a **red dot sight** (a real glass sight with a glowing dot), extended mag, silencer, grip and a laser that projects a beam.

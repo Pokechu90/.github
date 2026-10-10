@@ -333,7 +333,7 @@ function vmMuzzleWorld(gun, out) {
   return out;
 }
 const shells = [];
-for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.024, 8), VMS_MAT.brass); m.visible = false; vmScene.add(m); shells.push({ m, v: new V3(), t: 0 }); }
+for (let i = 0; i < 14; i++) { const m = new THREE.Mesh(cylGeo(0.0048, 0.0048, 0.026, 12), GP_MAT.brass); m.visible = false; vmScene.add(m); shells.push({ m, v: new V3(), t: 0 }); }
 let shellI = 0;
 function ejectShell(id) {
   const s = shells[shellI++ % shells.length], g = GUNS[id].g; g.updateMatrixWorld(true);
@@ -373,6 +373,8 @@ function updateViewmodel(dt) {
   VMS.nade = Math.max(0, VMS.nade - dt * 1.4);
   const a = smooth(G.ads);
   const p = tv.lerpVectors(gun.hip, gun.adsPos, a);
+  // the stock sits under the cheek once aimed: hide what would be at or behind the eye
+  if (gun.rear) gun.rear.visible = a < 0.6;
   const bobA = player.onGround && player.slideT <= 0 ? Math.min(1, Math.hypot(player.vel.x, player.vel.z) / 6) * (1 - a * 0.9) : 0;
   const sprintK = VMS.sprint;
   let rx = 0, ry = 0, rz = 0;
@@ -395,9 +397,9 @@ function updateViewmodel(dt) {
   VMS.mantle = Math.max(0, VMS.mantle - dt * 3); if (VMS.mantle > 0) { p.y -= Math.sin(VMS.mantle * Math.PI) * 0.12; rx -= Math.sin(VMS.mantle * Math.PI) * 0.4; }
   if (!player.alive) p.y -= Math.min(1, deathT) * 0.4;
   vmRoot.position.copy(p); vmRoot.rotation.set(rx, ry, rz);
-  if (gun.parts.slide) gun.parts.slide.position.z = -0.03 + VMS.slide * 0.045 + (am.mag === 0 ? 0.04 : 0);
-  if (gun.parts.pump) { const t = G.pumpT; gun.parts.pump.position.z = -0.34 + (t > 0 && t < 1 ? Math.sin(t * Math.PI) * 0.09 : 0); }
-  if (gun.parts.bolt) { const t = G.pumpT; const k = t > 0 && t < 1 ? Math.sin(t * Math.PI) : 0; gun.parts.bolt.rotation.z = k * 1.1; gun.parts.bolt.position.z = 0.1 + k * 0.07; }
+  if (gun.parts.slide) gun.parts.slide.position.z = gun.parts.slide.userData.z0 + VMS.slide * 0.045 + (am.mag === 0 ? 0.04 : 0);
+  if (gun.parts.pump) { const t = G.pumpT; gun.parts.pump.position.z = gun.parts.pump.userData.z0 + (t > 0 && t < 1 ? Math.sin(t * Math.PI) * 0.09 : 0); }
+  if (gun.parts.bolt) { const t = G.pumpT; const k = t > 0 && t < 1 ? Math.sin(t * Math.PI) : 0; gun.parts.bolt.rotation.z = k * 1.1; gun.parts.bolt.position.z = gun.parts.bolt.userData.z0 + k * 0.07; }
   if (gun.coils) gun.coils.forEach((c, i) => { c.rotation.z = time * (3 + i); c.scale.setScalar(1 + (G.cooldown > 0 ? 0.12 : 0) + Math.sin(time * 8 + i) * 0.03); });
   G.flashT -= dt; if (G.flashT <= 0) { gun.flash.visible = false; muzzleLight.intensity = damp(muzzleLight.intensity, 0, 30, dt); vmFlashLight.intensity = damp(vmFlashLight.intensity, 0, 30, dt); }
   for (const sh of shells) { if (!sh.m.visible) continue; sh.t -= dt; sh.v.y -= 6 * dt; sh.m.position.addScaledVector(sh.v, dt); sh.m.rotation.x += dt * 20; sh.m.rotation.z += dt * 14; if (sh.t <= 0) sh.m.visible = false; }

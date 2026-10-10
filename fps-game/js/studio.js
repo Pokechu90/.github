@@ -16,10 +16,11 @@ const studio = (() => {
     r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
     scene = new THREE.Scene();
     cam = new THREE.PerspectiveCamera(32, 4 / 3, 0.01, 50);
-    scene.add(new THREE.HemisphereLight(0xc8d4ff, 0x2a1a20, 1.0));
+    scene.add(new THREE.HemisphereLight(0xe4e8ee, 0x26262a, 0.8));
     const key = new THREE.DirectionalLight(0xfff0e0, 2.2); key.position.set(2, 3, 2); scene.add(key);
-    const rim = new THREE.DirectionalLight(0xff8a3a, 1.6); rim.position.set(-3, 1, -2); scene.add(rim);
+    const rim = new THREE.DirectionalLight(0xffc89a, 0.9); rim.position.set(-3, 1, -2); scene.add(rim);
     const fill = new THREE.DirectionalLight(0x8aa0ff, 0.6); fill.position.set(0, -2, 3); scene.add(fill);
+    scene.environment = makeGunEnv(r);
     holder = new THREE.Group(); scene.add(holder);
     // soft floor glow under the weapon
     const [c, g] = cv(128, 128); const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64); gr.addColorStop(0, 'rgba(255,140,40,.35)'); gr.addColorStop(1, 'rgba(255,140,40,0)'); g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
@@ -41,16 +42,20 @@ const studio = (() => {
     vmRoot.remove(gun.g); gun.g.visible = true; gun.flash.visible = false;
     gun.g.traverse(o => { if (o.isMesh && (o.material === VMS_MAT.glove || o.material === VMS_MAT.sleeve)) o.visible = false; });
     configureGun(gun, id);
-    const box = new THREE.Box3().setFromObject(gun.g), size = box.getSize(new V3()), ctr = box.getCenter(new V3());
+    // frame only what is visible: hidden attachments and hands don't count
+    const box = new THREE.Box3(); gun.g.updateMatrixWorld(true);
+    gun.g.traverse(o => { if (!o.isMesh) return; for (let q = o; q; q = q.parent) if (!q.visible) return; box.expandByObject(o); });
+    const size = box.getSize(new V3()), ctr = box.getCenter(new V3());
     const pivot = new THREE.Group(); gun.g.position.sub(ctr); pivot.add(gun.g);
-    pivot.scale.setScalar(1.7 / Math.max(size.x, size.y, size.z));
+    pivot.scale.setScalar(Math.min(1.6 / Math.max(size.x, size.y, size.z), 0.8 / size.y));
     gun.pivot = pivot;
     return (previews[id] = gun);
   }
   function swatch(k) {
     if (swatches[k]) return swatches[k];
     const s = SKINS[k];
-    if (s.pattern) return (swatches[k] = `url(${skinTexture(k).image.toDataURL()})`);
+    const pk = s.pattern || s.altPattern || s.metalPattern;
+    if (pk) return (swatches[k] = `url(${skinTexture(k, pk).image.toDataURL()})`);
     return (swatches[k] = `linear-gradient(135deg,#${s.poly.toString(16).padStart(6, '0')} 0 45%,#${s.metal.toString(16).padStart(6, '0')} 45% 80%,#${s.accent.toString(16).padStart(6, '0')} 80%)`);
   }
   function gunsList() {
@@ -71,7 +76,7 @@ const studio = (() => {
       else if (has) act = '<span class="note">Owned</span>';
       else if (s.candy) act = `<button class="btn sm${(profile.candy || 0) >= s.candy ? ' primary' : ''}" data-buy="${k}"><span class="candy"></span>${s.candy}</button>`;
       else act = `<span class="note">${escapeHtml(s.how)}</span>`;
-      return `<div class="st-skin${on ? ' on' : ''}${preview === k ? ' sel' : ''}" data-prev="${k}"><i style="background:${swatch(k)};background-size:cover"></i><div><b>${escapeHtml(s.name)}</b><small class="${s.event ? 'hw' : ''}">${s.event ? 'Halloween · ' : ''}${s.pattern ? escapeHtml(s.pattern) + ' pattern' : s.glow ? 'glowing accents' : s.shiny ? 'polished' : 'standard finish'}</small></div><div class="price">${act}</div></div>`;
+      return `<div class="st-skin${on ? ' on' : ''}${preview === k ? ' sel' : ''}" data-prev="${k}"><i style="background:${swatch(k)};background-size:cover"></i><div><b>${escapeHtml(s.name)}</b><small class="${s.event ? 'hw' : ''}">${s.event ? 'Halloween · ' : ''}${(s.pattern || s.altPattern || s.metalPattern) ? escapeHtml(PATTERN_NAME[s.pattern || s.altPattern || s.metalPattern] || '') : s.glow ? 'glowing accents' : s.shiny ? 'polished' : 'standard finish'}</small></div><div class="price">${act}</div></div>`;
     }).join('');
   }
   function render() {

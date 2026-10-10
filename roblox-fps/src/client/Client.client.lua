@@ -640,6 +640,8 @@ local function updateViewmodel(dt, bobA)
 	VM.nade = math.max(0, VM.nade - dt * 1.4)
 	local a = smooth(G.ads)
 	local p = g.hip:Lerp(g.ads, a)
+	-- the stock sits under the cheek once aimed
+	Viewmodels.setRear(g, a < 0.6)
 	local rx, ry, rz = 0, 0, 0
 	local sway = 1 - a * 0.7
 	p += V(math.cos(VM.bob) * 0.04 * bobA * (1 + VM.sprint) - VM.swayX * sway, math.abs(math.sin(VM.bob)) * 0.04 * bobA * (1 + VM.sprint) + VM.swayY * sway - VM.land * 0.2, VM.kick * (a > 0.5 and 0.6 or 1))

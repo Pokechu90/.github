@@ -57,13 +57,13 @@ Config.Attachments = {
 Config.AttachmentOrder = { "reddot", "extmag", "silencer", "grip", "laser" }
 
 Config.Skins = {
-	stock = { name = "Factory", metal = Color3.fromRGB(43, 48, 54), poly = Color3.fromRGB(27, 30, 33), alt = Color3.fromRGB(122, 106, 76), accent = Color3.fromRGB(245, 165, 36), how = "Default" },
-	desert = { name = "Dune", metal = Color3.fromRGB(109, 93, 68), poly = Color3.fromRGB(181, 156, 108), alt = Color3.fromRGB(201, 176, 129), accent = Color3.fromRGB(90, 74, 48), how = "Reach level 4" },
-	arctic = { name = "Glacier", metal = Color3.fromRGB(201, 209, 216), poly = Color3.fromRGB(233, 238, 242), alt = Color3.fromRGB(223, 230, 234), accent = Color3.fromRGB(63, 155, 255), how = "Quest: Big spender" },
-	crimson = { name = "Crimson", metal = Color3.fromRGB(58, 18, 18), poly = Color3.fromRGB(92, 22, 22), alt = Color3.fromRGB(122, 29, 29), accent = Color3.fromRGB(255, 58, 58), how = "Quest: Veteran" },
-	circuit = { name = "Circuit", metal = Color3.fromRGB(12, 22, 24), poly = Color3.fromRGB(15, 34, 38), alt = Color3.fromRGB(18, 48, 58), accent = Color3.fromRGB(42, 255, 213), glow = true, how = "Quest: Sharpshooter" },
-	scorch = { name = "Scorch", metal = Color3.fromRGB(42, 42, 42), poly = Color3.fromRGB(58, 42, 32), alt = Color3.fromRGB(90, 58, 32), accent = Color3.fromRGB(255, 122, 46), glow = true, how = "Boss drop" },
-	gold = { name = "Gilded", metal = Color3.fromRGB(212, 169, 58), poly = Color3.fromRGB(27, 30, 33), alt = Color3.fromRGB(201, 160, 58), accent = Color3.fromRGB(255, 240, 176), shiny = true, how = "Quest: Untouchable or level 20" },
+	stock = { name = "Factory", metal = Color3.fromRGB(43, 48, 54), poly = Color3.fromRGB(27, 30, 33), alt = Color3.fromRGB(106, 68, 40), accent = Color3.fromRGB(192, 134, 44), altMat = Enum.Material.Wood, how = "Default" },
+	desert = { name = "Dune", metal = Color3.fromRGB(90, 74, 52), poly = Color3.fromRGB(181, 156, 108), alt = Color3.fromRGB(205, 180, 138), accent = Color3.fromRGB(106, 84, 52), polyMat = Enum.Material.Sandstone, altMat = Enum.Material.Sand, how = "Reach level 4" },
+	arctic = { name = "Glacier", metal = Color3.fromRGB(142, 152, 162), poly = Color3.fromRGB(233, 238, 242), alt = Color3.fromRGB(200, 210, 218), accent = Color3.fromRGB(106, 168, 216), polyMat = Enum.Material.Snow, altMat = Enum.Material.Glacier, how = "Quest: Big spender" },
+	crimson = { name = "Crimson", metal = Color3.fromRGB(138, 26, 30), poly = Color3.fromRGB(42, 16, 18), alt = Color3.fromRGB(58, 20, 22), accent = Color3.fromRGB(255, 58, 58), metalMat = Enum.Material.Foil, polyMat = Enum.Material.Fabric, altMat = Enum.Material.Fabric, how = "Quest: Veteran" },
+	circuit = { name = "Circuit", metal = Color3.fromRGB(12, 22, 24), poly = Color3.fromRGB(15, 34, 38), alt = Color3.fromRGB(18, 48, 58), accent = Color3.fromRGB(42, 255, 213), glow = true, polyMat = Enum.Material.DiamondPlate, altMat = Enum.Material.Glass, how = "Quest: Sharpshooter" },
+	scorch = { name = "Scorch", metal = Color3.fromRGB(42, 42, 42), poly = Color3.fromRGB(58, 42, 32), alt = Color3.fromRGB(90, 40, 18), accent = Color3.fromRGB(255, 122, 46), glow = true, metalMat = Enum.Material.CorrodedMetal, polyMat = Enum.Material.Basalt, altMat = Enum.Material.CrackedLava, how = "Boss drop" },
+	gold = { name = "Gilded", metal = Color3.fromRGB(212, 169, 58), poly = Color3.fromRGB(27, 30, 33), alt = Color3.fromRGB(201, 160, 58), accent = Color3.fromRGB(255, 240, 176), shiny = true, altMat = Enum.Material.Foil, how = "Quest: Untouchable or level 20" },
 }
 Config.SkinOrder = { "stock", "desert", "arctic", "crimson", "circuit", "scorch", "gold", "prestige1", "prestige3", "prestige5", "pass" }
 

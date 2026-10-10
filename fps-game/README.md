@@ -69,7 +69,11 @@ Every boss kill pays a big coin reward and a guaranteed rare drop (an attachment
 
 **Levels and saving.** You earn XP from kills, headshots, waves and quests. Levels unlock weapons, skins and coins. Level, coins and unlocks are saved in the browser.
 
-**Eight weapons.** Warden P9 pistol, Wasp MX SMG, Vanguard KR7 assault rifle, Triad B3 burst rifle, Breaker 12 shotgun, Anvil HX LMG, Longreach R2 sniper, and Helion PX plasma rifle. Each has its own sound and a five-stat upgrade tree. Attachments are the red dot, extended magazine, silencer, grip and laser sight. There are seven skins.
+**Eight weapons.** Warden P9 pistol, Wasp MX SMG, Vanguard KR7 assault rifle, Triad B3 burst rifle, Breaker 12 shotgun, Anvil HX LMG, Longreach R2 sniper, and Helion PX plasma rifle. Each has its own sound and a five-stat upgrade tree. Attachments are the red dot, extended magazine, silencer, grip and laser sight.
+
+**Realistic gun models.** Every gun is modelled on a real design: bevelled parts, Picatinny rails with teeth, trigger guards, protected iron sights and rear apertures, ejection ports with the bolt showing, flash hiders and ported brakes, screws and pins, stippled grips, fluted barrels, a scope with turrets, a translucent magazine with rounds inside, a side saddle of shells and a linked ammo belt. Metal has a brushed, machined finish and reflects a soft studio light; polymer is stippled; furniture shows wood grain. Aiming puts your eye at a real cheek weld behind the rear sight.
+
+**Skins.** Seven standard finishes (walnut Factory, desert camo, arctic splinter camo, anodized red with carbon fibre, glowing circuit traces, charred with ember cracks, and engraved gold) plus 28 Halloween skins. Patterns keep a real-world scale on every part, and glowing skins light up their patterns.
 
 **Extras:**
 - Frag and stun grenades
@@ -141,6 +145,7 @@ Coins and XP get a smaller share of the same multipliers.
 | `js/audio.js` | Synthesized sound effects and music sequencer |
 | `js/render.js` | Renderer, textures, particles, decals, collision, damage numbers |
 | `js/maps.js` | The five maps and their lighting |
+| `js/gunparts.js` | Gunsmith kit: bevelled parts, rails, sights, triggers, muzzle devices, surfaces, reflections, mesh merging |
 | `js/weapons.js` | Weapons, attachments, skins, upgrades, viewmodels |
 | `js/progression.js` | XP and levels, quests, buffs, coins |
 | `js/nav.js` | Navigation grid and flow-field pathfinding |
