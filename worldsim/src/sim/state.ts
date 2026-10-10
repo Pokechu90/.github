@@ -286,4 +286,6 @@ export interface WorldState {
     humanDeaths: Record<string, number>;
   };
   events: WorldEvent[];
+  /** Important events kept for the long-term history (techs, towns, wars...). */
+  chronicle: WorldEvent[];
 }

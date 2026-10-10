@@ -80,8 +80,21 @@ export function converse(world: World, a: Npc, b: Npc): void {
 /** Once a day: couples form, marry or split. */
 export function updateRomanceDaily(world: World): void {
   const npcs = world.state.npcs;
+  world.crushes.clear();
   for (const a of npcs) {
     if (!isAdult(a)) continue;
+    if (a.partnerId < 0) {
+      let crush = 0;
+      let top = 0.3;
+      for (const id in a.relationships) {
+        const r = a.relationships[id].romance;
+        if (r > top) {
+          top = r;
+          crush = Number(id);
+        }
+      }
+      if (crush) world.crushes.set(a.id, crush);
+    }
     if (a.partnerId < 0) {
       // Find the person they're most in love with, if it's mutual.
       let best: Npc | null = null;

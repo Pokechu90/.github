@@ -324,7 +324,7 @@ function tryTask(world: World, n: Npc, task: string): boolean {
       return walkTo(world, n, target.x, target.y, 'work', { task, targetId: target.id });
     }
     case 'fish': {
-      const spot = findShore(world, n, s.x, s.y, WORK_RADIUS);
+      const spot = findShore(world, s.x, s.y, WORK_RADIUS);
       if (!spot) return false;
       return walkTo(world, n, spot.x, spot.y, 'work', { task });
     }
@@ -657,7 +657,7 @@ function findTree(world: World, n: Npc, cx: number, cy: number, radius: number) 
   return best as null | { id: number; x: number; y: number };
 }
 
-function findShore(world: World, n: Npc, cx: number, cy: number, radius: number): { x: number; y: number } | null {
+function findShore(world: World, cx: number, cy: number, radius: number): { x: number; y: number } | null {
   let best: { x: number; y: number } | null = null;
   let bestD = Infinity;
   forChunksInRadius(world, cx, cy, radius, (chunk) => {
@@ -667,7 +667,8 @@ function findShore(world: World, n: Npc, cx: number, cy: number, radius: number)
       const x = chunk.cx * CHUNK_SIZE + (i % CHUNK_SIZE) + 0.5;
       const y = chunk.cy * CHUNK_SIZE + ((i / CHUNK_SIZE) | 0) + 0.5;
       if (Math.hypot(x - cx, y - cy) > radius) continue;
-      const d = Math.hypot(x - n.x, y - n.y) + nextFloat(world.state.rng) * 6;
+      // Favour a few regular fishing spots close to home (familiar routes).
+      const d = Math.hypot(x - cx, y - cy) + (i % 7) * 0.3 + nextFloat(world.state.rng) * 2;
       if (d < bestD) {
         bestD = d;
         best = { x, y };

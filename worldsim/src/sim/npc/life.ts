@@ -11,6 +11,7 @@ import type { World } from '../world';
 import { ADULT_AGE, ELDER_AGE, WORK_AGE, ageYears, createNpc, fullName, isAdult, killNpc, rel } from './people';
 import { remember } from './memory';
 import { totalFood } from '../society/settlement';
+import { birthIsAbstract } from '../tiers';
 
 const PREGNANCY_DAYS = 90;
 
@@ -80,6 +81,14 @@ function giveBirth(world: World, mother: Npc): void {
   const rng = world.state.rng;
   mother.pregnantDays = -1;
   const father = world.npcById(mother.pregnancyFatherId) ?? undefined;
+  const town = world.settlement(mother.settlementId);
+  if (birthIsAbstract(world, town)) {
+    // The city is so big that this child joins the statistical population.
+    town!.abstractPop += 1;
+    world.state.stats.humanBirths++;
+    remember(world, mother, 'I gave birth to a child.', { importance: 0.9, feeling: 0.9 });
+    return;
+  }
   const baby = createNpc(world, {
     ageYears: 0,
     x: mother.x,

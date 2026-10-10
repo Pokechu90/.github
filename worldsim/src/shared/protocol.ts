@@ -44,6 +44,8 @@ export type FromSim =
   | { type: 'npcContext'; requestId: number; context: NpcPromptContext | null }
   | { type: 'focusContexts'; requestId: number; contexts: NpcPromptContext[] }
   | { type: 'saveData'; requestId: number; data: string; year: number }
+  /** Minimap data: newly explored chunks (4x4 biome samples each) and all towns. */
+  | { type: 'overview'; chunks: { cx: number; cy: number; cells: number[] }[]; reset: boolean }
   | { type: 'error'; message: string };
 
 export interface ChunkTerrainView {
@@ -224,6 +226,10 @@ export interface WorldStats {
   humans: number;
   humanBirths: number;
   humanDeaths: Record<string, number>;
+  /** The most advanced era any settlement has reached. */
+  era: string;
+  /** Exploration beyond the planet (milestone 6). */
+  space: { planetsKnown: number; colonies: number } | null;
 }
 
 export interface WorldEvent {
@@ -255,4 +261,8 @@ export interface Snapshot {
   selected: SelectedInfo | null;
   stats: WorldStats;
   events: WorldEvent[];
+  /** New entries for the long-term chronicle since the last snapshot. */
+  chronicle: WorldEvent[];
+  /** True if the page should forget its chronicle (another world was loaded). */
+  chronicleReset: boolean;
 }

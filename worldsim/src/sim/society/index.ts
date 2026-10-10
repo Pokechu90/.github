@@ -3,9 +3,9 @@
  * migration) into the world's extension points.
  */
 import type { World } from '../world';
-import { civDaily, civJobDemand, doCivWork, techName, tryCivTask } from './work';
-import { practice } from './tech';
-import { doTradeWork, payWage, spendDaily, traderDemand, tryTradeTask, updatePricesDaily } from './economy';
+import { abstractCraft, civDaily, civJobDemand, doCivWork, techName, tryCivTask } from './work';
+import { abstractResearch, practice } from './tech';
+import { abstractTrade, doTradeWork, payWage, spendDaily, traderDemand, tryTradeTask, updatePricesDaily } from './economy';
 import { governanceDaily } from './governance';
 import { canMigrate, exile, immigrationDaily, migrationDaily, requestMigration } from './migration';
 
@@ -23,6 +23,9 @@ export function installCivilization(world: World): void {
   h.canMigrate = canMigrate;
   h.requestMigration = requestMigration;
   h.exile = exile;
+  h.abstractTrade = abstractTrade;
+  h.abstractCraft = abstractCraft;
+  h.abstractResearch = abstractResearch;
   h.daily!.push(
     civDaily,
     (w) => {

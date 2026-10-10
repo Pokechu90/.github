@@ -123,3 +123,8 @@ dialog#saves::backdrop { background: rgba(0,0,0,0.5); }
 .toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--accent); padding: 8px 12px; border-radius: 10px; z-index: 10; }
 table.stock { width: 100%; border-collapse: collapse; } table.stock td:nth-child(2), table.stock td:nth-child(3) { text-align: right; }
 [hidden] { display: none !important; }
+#minimap { position: fixed; left: 8px; bottom: 40px; width: 200px; height: 160px; border: 1px solid var(--border); border-radius: 8px; cursor: crosshair; background: #0b1020; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.chips button { padding: 2px 8px; font-size: 11px; }
+#events h5 { margin: 10px 0 4px; color: var(--accent); font-size: 12px; }
+@media (max-width: 760px) { #minimap { display: none; } }

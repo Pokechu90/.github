@@ -71,7 +71,7 @@ export function placeBuilding(world: World, s: Settlement, kind: BuildingKind, x
   for (let dy = -r + 1; dy < r; dy++) {
     for (let dx = -r + 1; dx < r; dx++) world.removePlantAt(Math.floor(x) + dx, Math.floor(y) + dy);
   }
-  world.markBuildingsChanged(b);
+  world.markBuildingsChanged(b, true);
   return b;
 }
 
@@ -159,7 +159,8 @@ function planHousing(world: World, s: Settlement): void {
     (n) => n.partnerId >= 0 && n.married && n.homeId >= 0 &&
       homeResidents(world, n.homeId).some((o) => o.id === n.motherId || o.id === n.fatherId),
   ).length;
-  if (people.length + 1 <= capacity && homeless === 0 && couplesWithoutOwnHome === 0) return;
+  const housedAbstract = s.abstractPop * 0.5; // statistical people live in houses too
+  if (people.length + housedAbstract + 1 <= capacity && homeless === 0 && couplesWithoutOwnHome === 0) return;
   const kind: BuildingKind = s.tech.includes('masonry') && canAfford(s, 'house') ? 'house' : 'hut';
   if (!canAfford(s, kind)) return;
   const spot = findBuildSpot(world, s, 1);

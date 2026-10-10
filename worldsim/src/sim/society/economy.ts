@@ -158,3 +158,33 @@ export function doTradeWork(world: World, n: Npc): void {
     deliver(world, n);
   }
 }
+
+/** A whole trade trip resolved at once (for settlements far from the camera). */
+export function abstractTrade(world: World, home: Settlement): void {
+  const deal = bestDeal(world, home);
+  if (!deal) return;
+  const { to, out, amount } = deal;
+  home.stock[out] -= amount;
+  to.stock[out] += amount;
+  const value = amount * price(to, out);
+  let buy: ResourceType | null = null;
+  let bestGain = 1.1;
+  for (const r of Object.keys(BASE_PRICE) as ResourceType[]) {
+    const avail = to.stock[r] - WANT_PER_PERSON[r] * population(world, to);
+    if (avail < 3) continue;
+    const gain = price(home, r) / price(to, r);
+    if (gain > bestGain) {
+      bestGain = gain;
+      buy = r;
+    }
+  }
+  if (buy) {
+    const amt = Math.min(CARGO * 1.5, value / price(to, buy), to.stock[buy]);
+    to.stock[buy] -= amt;
+    home.stock[buy] += amt;
+  }
+  shareKnowledge(world, to, home, 0.3);
+  shareKnowledge(world, home, to, 0.3);
+  home.diplomacy[to.id] = Math.min(1, (home.diplomacy[to.id] ?? 0) + 0.04);
+  to.diplomacy[home.id] = Math.min(1, (to.diplomacy[home.id] ?? 0) + 0.04);
+}

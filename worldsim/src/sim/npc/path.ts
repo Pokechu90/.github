@@ -96,20 +96,32 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
   const w = Math.max(sx, gx) + MARGIN - minX + 1;
   const h = Math.max(sy, gy) + MARGIN - minY + 1;
   const n = w * h;
-  const g = new Float32Array(n).fill(Infinity);
-  const costs = new Float32Array(n).fill(-2); // -2 = not looked up yet
+  // Reuse buffers between searches; a "stamp" marks which cells belong to this search.
+  ensureBuffers(n);
+  const stamp = ++searchStamp;
+  const { g, costs, parent, closed, seen } = buf;
+  const touch = (i: number) => {
+    if (seen[i] !== stamp) {
+      seen[i] = stamp;
+      g[i] = Infinity;
+      costs[i] = -2; // -2 = not looked up yet
+      parent[i] = -1;
+      closed[i] = 0;
+    }
+  };
   const cost = (x: number, y: number) => {
     const i = (y - minY) * w + (x - minX);
+    touch(i);
     let c = costs[i];
     if (c === -2) costs[i] = c = tileCost(world, x, y);
     return c;
   };
-  const parent = new Int32Array(n).fill(-1);
-  const closed = new Uint8Array(n);
   const heap = new MinHeap();
   const idx = (x: number, y: number) => (y - minY) * w + (x - minX);
   const start = idx(sx, sy);
   const goal = idx(gx, gy);
+  touch(start);
+  touch(goal);
   g[start] = 0;
   heap.push(start, octile(sx, sy, gx, gy));
 
@@ -130,8 +142,8 @@ export function findPath(world: World, x0: number, y0: number, x1: number, y1: n
         const ny = cy + dy;
         if (nx < minX || ny < minY || nx >= minX + w || ny >= minY + h) continue;
         const ni = idx(nx, ny);
-        if (closed[ni]) continue;
         const c = cost(nx, ny);
+        if (closed[ni]) continue;
         if (c < 0) continue;
         // No cutting corners diagonally past water.
         if (dx && dy && (cost(cx + dx, cy) < 0 || cost(cx, cy + dy) < 0)) continue;
@@ -215,6 +227,28 @@ function octile(x0: number, y0: number, x1: number, y1: number): number {
   const dx = Math.abs(x1 - x0);
   const dy = Math.abs(y1 - y0);
   return Math.max(dx, dy) + 0.414 * Math.min(dx, dy);
+}
+
+const buf = {
+  size: 0,
+  g: new Float32Array(0),
+  costs: new Float32Array(0),
+  parent: new Int32Array(0),
+  closed: new Uint8Array(0),
+  seen: new Int32Array(0),
+};
+let searchStamp = 0;
+
+function ensureBuffers(n: number): void {
+  if (buf.size >= n) return;
+  const size = Math.max(n, buf.size * 2, 4096);
+  buf.size = size;
+  buf.g = new Float32Array(size);
+  buf.costs = new Float32Array(size);
+  buf.parent = new Int32Array(size);
+  buf.closed = new Uint8Array(size);
+  buf.seen = new Int32Array(size);
+  searchStamp = 0;
 }
 
 class MinHeap {

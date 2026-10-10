@@ -61,7 +61,7 @@ export function decide(world: World, n: Npc): void {
 
   // Social life
   const evening = hour >= 18 && hour < 22;
-  const crush = bestRomance(n);
+  const crush = bestRomance(world, n);
   add('socialize', n.needs.social * (0.4 + t.extraversion) + (evening ? 0.3 : 0) + (crush ? 0.15 : 0), crush ? 'crush' : 'lonely');
 
   // Curiosity
@@ -188,17 +188,10 @@ function pickConversationPartner(world: World, n: Npc): Npc | null {
   return best;
 }
 
-function bestRomance(n: Npc): number {
-  let best = -1;
-  let bestR = 0.3;
+/** Who they have a crush on (worked out once a day in social.ts), or 0. */
+function bestRomance(world: World, n: Npc): number {
   if (n.partnerId >= 0) return -1;
-  for (const [id, r] of Object.entries(n.relationships)) {
-    if (r.romance > bestR) {
-      bestR = r.romance;
-      best = Number(id);
-    }
-  }
-  return best >= 0 ? best : 0;
+  return world.crushes.get(n.id) ?? 0;
 }
 
 function computeMood(world: World, n: Npc): number {
@@ -248,7 +241,7 @@ function thoughtFor(world: World, n: Npc, o: Option): string {
     case 'learn':
       return 'I want to learn what my parents do.';
     case 'socialize': {
-      const crushId = bestRomance(n);
+      const crushId = bestRomance(world, n);
       const crush = crushId > 0 ? world.npcById(crushId) : null;
       if (crush) return pick(rng, [`I can't stop thinking about ${crush.firstName}.`, `Maybe I'll go see ${crush.firstName}...`]);
       const partner = world.npcById(n.partnerId);

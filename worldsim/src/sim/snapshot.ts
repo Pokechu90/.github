@@ -14,6 +14,7 @@ import type { World } from './world';
 import { ageYears, fullName } from './npc/people';
 import { describeBuilding, describeNpc } from './npc/describe';
 import { describeSettlement } from './society/describe';
+import { ERAS, eraOf } from './society/tech';
 import { JOBS } from '../shared/people';
 
 /** Chunks of margin kept loaded around the visible area. */
@@ -36,10 +37,18 @@ export class ViewTracker {
   private sentBuildingsVersion = -1;
   private sentBuildingsView = '';
   private lastPeopleList = 0;
+  private sentChronicle = 0;
+  private chronicleReset = true;
+  private overviewSent = new Set<string>();
+  private overviewReset = true;
   selected: SelectTarget | null = null;
 
   /** Forget what the page has seen (after loading a different world). */
   reset(): void {
+    this.sentChronicle = 0;
+    this.chronicleReset = true;
+    this.overviewSent.clear();
+    this.overviewReset = true;
     this.sentTerrain.clear();
     this.sentPlants.clear();
     this.sentBuildingsVersion = -1;
@@ -134,8 +143,8 @@ export class ViewTracker {
 
     const animals: Snapshot['animals'] = [];
     if (this.viewport.detail) {
-      for (const key of visibleKeys) {
-        for (const a of world.animalsInChunk(key)) {
+      for (const [cx, cy] of visible) {
+        for (const a of world.animalsInChunk(cx, cy)) {
           animals.push({
             id: a.id,
             species: a.species,
@@ -150,8 +159,8 @@ export class ViewTracker {
     }
 
     const npcs: Snapshot['npcs'] = [];
-    for (const key of visibleKeys) {
-      for (const n of world.npcsInChunk(key)) {
+    for (const [cx, cy] of visible) {
+      for (const n of world.npcsInChunk(cx, cy)) {
         const age = ageYears(n);
         const home = world.building(n.homeId);
         npcs.push({
@@ -235,9 +244,37 @@ export class ViewTracker {
         humans: s.npcs.length + s.settlements.reduce((a, st) => a + st.abstractPop, 0),
         humanBirths: s.stats.humanBirths,
         humanDeaths: { ...s.stats.humanDeaths },
+        era: ERAS[s.settlements.reduce((m, st) => (st.abandoned ? m : Math.max(m, eraOf(st))), 0)],
+        space: world.hooks.spaceStats?.(world) ?? null,
       },
       events: s.events.slice(-40),
+      chronicle: this.takeChronicle(world),
+      chronicleReset: this.chronicleReset ? !(this.chronicleReset = false) : false,
     };
+  }
+
+  private takeChronicle(world: World) {
+    const c = world.state.chronicle;
+    if (this.sentChronicle > c.length) this.sentChronicle = 0;
+    const out = c.slice(this.sentChronicle);
+    this.sentChronicle = c.length;
+    return out;
+  }
+
+  /** Newly explored chunks for the minimap (4x4 biome samples each). */
+  overview(world: World): { chunks: { cx: number; cy: number; cells: number[] }[]; reset: boolean } | null {
+    const chunks: { cx: number; cy: number; cells: number[] }[] = [];
+    for (const c of world.state.chunks.values()) {
+      if (this.overviewSent.has(c.key)) continue;
+      this.overviewSent.add(c.key);
+      const cells: number[] = [];
+      for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) cells.push(c.terrain.biomes[(4 + j * 8) * CHUNK_SIZE + 4 + i * 8]);
+      chunks.push({ cx: c.cx, cy: c.cy, cells });
+      if (chunks.length > 400) break;
+    }
+    const reset = this.overviewReset;
+    this.overviewReset = false;
+    return chunks.length || reset ? { chunks, reset } : null;
   }
 
   private describeSelected(world: World): SelectedInfo | null {

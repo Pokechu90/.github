@@ -7,6 +7,7 @@ import { randInt, randRange } from '../../shared/rng';
 import type { Npc } from '../state';
 import type { World } from '../world';
 import { decide, updateInfant } from './brain';
+import { isActiveNpc } from '../tiers';
 import { WALK_SPEED, performAction } from './actions';
 import { ageYears, createNpc, rel } from './people';
 import { remember } from './memory';
@@ -15,6 +16,8 @@ import { foundSettlement, placeBuilding, findBuildSpot } from '../society/settle
 export function updateNpcs(world: World, dt: number): void {
   const night = isNight(world.state.time);
   for (const n of world.state.npcs) {
+    // Distant people are simulated once a day in aggregate (see tiers.ts).
+    if (!isActiveNpc(world, n)) continue;
     updateNeeds(world, n, dt, night);
     n.ageDays += dt / 1440;
     if (updateInfant(world, n)) continue;

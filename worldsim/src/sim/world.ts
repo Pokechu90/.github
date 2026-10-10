@@ -13,13 +13,15 @@ import type { WeatherView } from '../shared/protocol';
 import { Climate } from './climate';
 import type { Animal, Building, Chunk, JobKey, Npc, Plant, ResourceType, Settlement, SkillKey, WorldState } from './state';
 import { removePlantOnTile, spawnInitialPlants, updateGrassDaily, updatePlantsDaily } from './ecology/plants';
-import { spawnInitialAnimals, updateAnimals, updateAnimalsDaily } from './ecology/animals';
+import { spawnInitialAnimals, updateAnimals, updateAnimalsDaily, updateDistantAnimalsDaily } from './ecology/animals';
 import { updateNpcs, createStartingSettlement } from './npc/npcs';
 import { updateHealthDaily } from './npc/health';
 import { updateRomanceDaily } from './npc/social';
 import { assignJobs, updateLifeDaily } from './npc/life';
 import { totalFood, updateSettlementDaily } from './society/settlement';
 import { installCivilization } from './society';
+import { abstractPopulationDaily, chunkIsNear, distantSettlementDaily, updateTiers } from './tiers';
+import { BUILDINGS } from '../shared/people';
 
 /**
  * Extension points used by later systems (economy, technology, migration,
@@ -32,8 +34,12 @@ export interface WorldHooks {
   onSettlementFounded?: (world: World, s: Settlement) => void;
   daily?: Array<(world: World) => void>;
   canMigrate?: (world: World, n: Npc) => boolean;
+  abstractTrade?: (world: World, s: Settlement) => void;
+  abstractCraft?: (world: World, s: Settlement) => void;
+  abstractResearch?: (world: World, s: Settlement, hours: number) => void;
   requestMigration?: (world: World, n: Npc) => void;
   techName?: (id: string) => string;
+  spaceStats?: (world: World) => { planetsKnown: number; colonies: number } | null;
   onTech?: Array<(world: World, s: Settlement, techId: string) => void>;
   onPractice?: (world: World, n: Npc, skill: SkillKey, hours: number) => void;
   onProduced?: (world: World, n: Npc, resource: ResourceType, amount: number) => void;
@@ -47,6 +53,8 @@ export interface WorldHooks {
 
 const HISTORY_DAYS = 360;
 const MAX_EVENTS = 600;
+/** Kinds of events worth keeping in the long-term chronicle. */
+const CHRONICLE_KINDS = new Set(['tech', 'settlement', 'conflict', 'migration', 'law', 'space', 'world']);
 
 export class World {
   readonly state: WorldState;
@@ -54,16 +62,27 @@ export class World {
   readonly climate: Climate;
 
   /** Lookup tables rebuilt every tick (cheap, and never stale). */
-  private animalsByChunk = new Map<string, Animal[]>();
+  private animalsByChunk = new Map<number, Animal[]>();
   private animalsById = new Map<number, Animal>();
   private npcsById = new Map<number, Npc>();
   private npcsBySettlement = new Map<number, Npc[]>();
-  private npcsByChunk = new Map<string, Npc[]>();
+  private npcsByChunk = new Map<number, Npc[]>();
+  private settlementsById = new Map<number, Settlement>();
   private buildingsById = new Map<number, Building>();
   private buildingsBySettlement = new Map<number, Building[]>();
   private buildingsDirty = true;
+  /** Spatial (per-chunk) indexes need rebuilding before the next query. */
+  private spatialStale = true;
+  /** Fingerprint of the people list, to notice births, deaths and moves cheaply. */
+  private peopleKey = '';
   /** Targets (plants, animals, patients) claimed by someone: target id -> npc id. */
   private reservations = new Map<number, number>();
+  /** Where the camera is (centre, in tiles). Null in headless runs: everything is fully simulated. */
+  focus: { x: number; y: number } | null = null;
+  /** At very high game speeds everyone is simulated in daily aggregate (nobody could watch them walk anyway). */
+  fastForward = false;
+  /** Settlements simulated minute by minute (the rest run as a daily aggregate). */
+  readonly activeSettlements = new Set<number>();
   /** NPCs currently talking with the player (they wait while you type). */
   readonly chatting = new Set<number>();
   /** When each NPC last had an LLM decide for them (game minutes). */
@@ -90,6 +109,7 @@ export class World {
       buildings: [],
       stats: { births: 0, deaths: {}, history: [], peakDeer: 0, peopleHistory: [], humanBirths: 0, humanDeaths: {} },
       events: [],
+      chronicle: [],
     };
     this.log(`The world was born from seed ${seed}.`, 'world');
     installCivilization(this);
@@ -130,8 +150,10 @@ export class World {
 
   private tick(dt: number): void {
     this.state.time += dt;
-    this.rebuildIndexes();
-    updateAnimals(this, dt);
+    // Positions changed: spatial indexes are rebuilt lazily when next needed.
+    this.spatialStale = true;
+    this.refreshPeopleIndex();
+    updateAnimals(this, dt, this.focus);
     updateNpcs(this, dt);
     for (const fn of this.hooks.tick ?? []) fn(this, dt);
 
@@ -144,18 +166,31 @@ export class World {
 
   private daily(): void {
     const cal = getCalendar(this.state.time);
-    if (cal.dayOfSeason === 1 && cal.season === 0) this.log(`Year ${cal.year} begins.`, 'world');
+    if (cal.dayOfSeason === 1 && cal.season === 0) this.log(`Year ${cal.year} begins.`, 'calendar');
 
+    updateTiers(this);
     for (const chunk of this.state.chunks.values()) {
-      updateGrassDaily(this, chunk);
-      updatePlantsDaily(this, chunk);
-      chunk.fish = Math.min(chunk.fishMax, chunk.fish + chunk.fishMax * 0.06);
+      // Far-away land changes slowly: update it in 10-day steps.
+      let days = 1;
+      if (!chunkIsNear(this, chunk.cx, chunk.cy)) {
+        if ((chunk.cx * 7 + chunk.cy * 13 + cal.day) % 10 !== 0) continue;
+        days = 10;
+      }
+      updateGrassDaily(this, chunk, days);
+      updatePlantsDaily(this, chunk, days);
+      chunk.fish = Math.min(chunk.fishMax, chunk.fish + chunk.fishMax * 0.06 * days);
     }
     this.rebuildIndexes();
     updateAnimalsDaily(this);
+    updateDistantAnimalsDaily(this, this.focus);
 
     // People and society.
-    for (const s of this.state.settlements) if (!s.abandoned) updateSettlementDaily(this, s);
+    for (const s of this.state.settlements) {
+      if (s.abandoned) continue;
+      updateSettlementDaily(this, s);
+      if (!this.activeSettlements.has(s.id)) distantSettlementDaily(this, s);
+      abstractPopulationDaily(this, s);
+    }
     updateHealthDaily(this);
     this.rebuildIndexes();
     updateRomanceDaily(this);
@@ -182,6 +217,8 @@ export class World {
 
   /** Fast numeric lookup for chunks (string keys are slow in hot loops). */
   private chunkIndex = new Map<number, Chunk>();
+  /** Crush (the person someone is most in love with), worked out once a day. */
+  readonly crushes = new Map<number, number>();
   private lastChunk: Chunk | undefined;
 
   getChunk(cx: number, cy: number): Chunk | undefined {
@@ -310,16 +347,18 @@ export class World {
   // ---------- Animals ----------
 
   animalById(id: number): Animal | undefined {
+    this.ensureSpatial();
     return this.animalsById.get(id);
   }
 
   nearbyAnimals(x: number, y: number, radius: number): Animal[] {
+    this.ensureSpatial();
     const out: Animal[] = [];
     const cx = Math.floor(x / CHUNK_SIZE);
     const cy = Math.floor(y / CHUNK_SIZE);
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
-        const list = this.animalsByChunk.get(chunkKey(cx + dx, cy + dy));
+        const list = this.animalsByChunk.get(numKey(cx + dx, cy + dy));
         if (!list) continue;
         for (const a of list) if (Math.hypot(a.x - x, a.y - y) <= radius) out.push(a);
       }
@@ -327,20 +366,56 @@ export class World {
     return out;
   }
 
-  animalsInChunk(key: string): Animal[] {
-    return this.animalsByChunk.get(key) ?? [];
+  animalsInChunk(cx: number, cy: number): Animal[] {
+    this.ensureSpatial();
+    return this.animalsByChunk.get(numKey(cx, cy)) ?? [];
   }
 
-  rebuildIndexes(): void {
+  /** Rebuilds the id/settlement indexes for people if anyone was born, died or moved town. */
+  private refreshPeopleIndex(): void {
+    const npcs = this.state.npcs;
+    let sig = npcs.length * 31 + this.state.settlements.length;
+    for (let i = 0; i < npcs.length; i += 1) sig = (sig * 33 + npcs[i].settlementId + npcs[i].id) | 0;
+    const key = `${npcs.length}:${sig}`;
+    if (key === this.peopleKey && !this.buildingsDirty) return;
+    this.peopleKey = key;
+    this.rebuildIndexes();
+  }
+
+  private ensureSpatial(): void {
+    if (!this.spatialStale) return;
+    this.spatialStale = false;
     this.animalsByChunk.clear();
     this.animalsById.clear();
     for (const a of this.state.animals) {
-      const key = chunkKey(Math.floor(a.x / CHUNK_SIZE), Math.floor(a.y / CHUNK_SIZE));
+      const key = numKey(Math.floor(a.x / CHUNK_SIZE), Math.floor(a.y / CHUNK_SIZE));
       let list = this.animalsByChunk.get(key);
       if (!list) this.animalsByChunk.set(key, (list = []));
       list.push(a);
       this.animalsById.set(a.id, a);
     }
+    this.npcsByChunk.clear();
+    for (const n of this.state.npcs) {
+      const key = numKey(Math.floor(n.x / CHUNK_SIZE), Math.floor(n.y / CHUNK_SIZE));
+      let cl = this.npcsByChunk.get(key);
+      if (!cl) this.npcsByChunk.set(key, (cl = []));
+      cl.push(n);
+    }
+  }
+
+  rebuildIndexes(): void {
+    this.spatialStale = true;
+    this.animalsByChunk.clear();
+    this.animalsById.clear();
+    for (const a of this.state.animals) {
+      const key = numKey(Math.floor(a.x / CHUNK_SIZE), Math.floor(a.y / CHUNK_SIZE));
+      let list = this.animalsByChunk.get(key);
+      if (!list) this.animalsByChunk.set(key, (list = []));
+      list.push(a);
+      this.animalsById.set(a.id, a);
+    }
+    this.settlementsById.clear();
+    for (const st of this.state.settlements) this.settlementsById.set(st.id, st);
     this.npcsById.clear();
     this.npcsBySettlement.clear();
     this.npcsByChunk.clear();
@@ -349,10 +424,6 @@ export class World {
       let list = this.npcsBySettlement.get(n.settlementId);
       if (!list) this.npcsBySettlement.set(n.settlementId, (list = []));
       list.push(n);
-      const key = chunkKey(Math.floor(n.x / CHUNK_SIZE), Math.floor(n.y / CHUNK_SIZE));
-      let cl = this.npcsByChunk.get(key);
-      if (!cl) this.npcsByChunk.set(key, (cl = []));
-      cl.push(n);
     }
     if (this.buildingsDirty) {
       this.buildingsDirty = false;
@@ -386,12 +457,18 @@ export class World {
     return this.npcsBySettlement.get(settlementId) ?? [];
   }
 
-  npcsInChunk(key: string): Npc[] {
-    return this.npcsByChunk.get(key) ?? [];
+  npcsInChunk(cx: number, cy: number): Npc[] {
+    this.ensureSpatial();
+    return this.npcsByChunk.get(numKey(cx, cy)) ?? [];
   }
 
   settlement(id: number): Settlement | undefined {
-    return this.state.settlements.find((s) => s.id === id);
+    let s = this.settlementsById.get(id);
+    if (!s && id >= 0) {
+      s = this.state.settlements.find((x) => x.id === id);
+      if (s) this.settlementsById.set(id, s);
+    }
+    return s;
   }
 
   building(id: number): Building | undefined {
@@ -404,8 +481,9 @@ export class World {
     return this.buildingsBySettlement.get(settlementId) ?? [];
   }
 
-  markBuildingsChanged(_b?: Building): void {
-    this.buildingsDirty = true;
+  /** Something about buildings changed (redraw); `structural` = added or removed (re-index). */
+  markBuildingsChanged(_b?: Building, structural = false): void {
+    if (structural) this.buildingsDirty = true;
     this.buildingsVersion++;
   }
 
@@ -413,7 +491,7 @@ export class World {
     const i = this.state.buildings.indexOf(b);
     if (i >= 0) this.state.buildings.splice(i, 1);
     for (const n of this.state.npcs) if (n.homeId === b.id) n.homeId = -1;
-    this.markBuildingsChanged(b);
+    this.markBuildingsChanged(b, true);
   }
 
   removePlantAt(x: number, y: number): void {
@@ -436,6 +514,10 @@ export class World {
 
   releaseAll(npcId: number): void {
     for (const [t, by] of this.reservations) if (by === npcId) this.reservations.delete(t);
+  }
+
+  buildingWork(kind: string): number {
+    return BUILDINGS[kind]?.work ?? 10;
   }
 
   techName(id: string): string {
@@ -476,8 +558,13 @@ export class World {
   }
 
   log(text: string, kind = 'world', about = -1): void {
-    this.state.events.push({ time: this.state.time, text, kind, about });
+    const e = { time: this.state.time, text, kind, about };
+    this.state.events.push(e);
     if (this.state.events.length > MAX_EVENTS) this.state.events.shift();
+    if (CHRONICLE_KINDS.has(kind)) {
+      this.state.chronicle.push(e);
+      if (this.state.chronicle.length > 4000) this.state.chronicle.splice(0, 500);
+    }
   }
 
   /** Counts for the stats panel. */
@@ -500,6 +587,11 @@ export class World {
 }
 
 /** True if a tile is next to water. (Salt vs fresh water isn't modelled yet.) */
+/** Numeric key for chunk coordinates (much faster than strings in maps). */
+function numKey(cx: number, cy: number): number {
+  return (cx + 100000) * 200000 + (cy + 100000);
+}
+
 function touchesFreshWater(biomes: Uint8Array, i: number): boolean {
   const x = i % CHUNK_SIZE;
   const y = (i / CHUNK_SIZE) | 0;

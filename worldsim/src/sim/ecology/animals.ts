@@ -74,7 +74,7 @@ function makeAnimal(world: World, rng: Rng, x: number, y: number, ageDays: numbe
 }
 
 /** Moves every animal forward by `dt` game minutes. */
-export function updateAnimals(world: World, dt: number): void {
+export function updateAnimals(world: World, dt: number, focus: { x: number; y: number } | null = null): void {
   const animals = world.state.animals;
   const rng = world.state.rng;
   const night = isNight(world.state.time);
@@ -82,6 +82,8 @@ export function updateAnimals(world: World, dt: number): void {
   for (let i = animals.length - 1; i >= 0; i--) {
     const a = animals[i];
     const sp = ANIMALS[a.species];
+    // Far from the camera, animals are simulated once a day (updateDistantAnimalsDaily).
+    if (focus && Math.hypot(a.x - focus.x, a.y - focus.y) > DETAIL_RADIUS) continue;
 
     // --- Body ---
     a.ageDays += dt / MINUTES_PER_DAY;
@@ -116,6 +118,45 @@ export function updateAnimals(world: World, dt: number): void {
   }
 }
 
+const DETAIL_RADIUS = 110;
+
+/** A day in the life of animals far from the camera, in one cheap step. */
+export function updateDistantAnimalsDaily(world: World, focus: { x: number; y: number } | null): void {
+  if (!focus) return;
+  const animals = world.state.animals;
+  for (let i = animals.length - 1; i >= 0; i--) {
+    const a = animals[i];
+    if (Math.hypot(a.x - focus.x, a.y - focus.y) <= DETAIL_RADIUS) continue;
+    const sp = ANIMALS[a.species];
+    a.ageDays += 1;
+    const chunk = world.chunkAtTile(a.x, a.y);
+    const meal = sp.grassPerMeal * (1 / sp.hungerDays);
+    if (chunk && chunk.grass > meal) {
+      chunk.grass -= meal;
+      a.hunger = 0.2;
+      a.health = Math.min(1, a.health + 0.25);
+    } else {
+      a.hunger = Math.min(1, a.hunger + 1 / sp.hungerDays);
+      // Hungry herds drift towards greener land.
+      const nx = a.x + (world.rand() - 0.5) * 16;
+      const ny = a.y + (world.rand() - 0.5) * 16;
+      if (world.isWalkable(nx, ny)) {
+        a.x = nx;
+        a.y = ny;
+      }
+      if (a.hunger >= 1) a.health -= 1 / 3;
+    }
+    a.thirst = 0.2;
+    if (a.pregnantDays >= 0 && (a.pregnantDays += 1) >= sp.gestationDays) giveBirth(world, a);
+    const cause = a.health <= 0 ? 'starvation' : a.ageDays >= a.lifespanDays ? 'old age' : null;
+    if (cause) {
+      world.recordDeath(cause);
+      animals[i] = animals[animals.length - 1];
+      animals.pop();
+    }
+  }
+}
+
 /** Once a day: mating season, and herds wandering into empty land. */
 export function updateAnimalsDaily(world: World): void {
   const season = getCalendar(world.state.time).season;
@@ -124,7 +165,7 @@ export function updateAnimalsDaily(world: World): void {
   if (world.state.animals.length < MAX_ANIMALS / 2) {
     for (const chunk of world.state.chunks.values()) {
       if (chunk.grassMax < 260 || !chance(rng, 0.0004)) continue;
-      if (world.animalsInChunk(chunk.key).length > 0) continue;
+      if (world.animalsInChunk(chunk.cx, chunk.cy).length > 0) continue;
       spawnInitialAnimals(world, chunk, rng, true);
     }
   }

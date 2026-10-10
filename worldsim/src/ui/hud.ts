@@ -42,6 +42,8 @@ export class Hud {
   private lastPanelDraw = 0;
   private lastSnap: Snapshot | null = null;
   private people: Snapshot['people'] = [];
+  private chronicle: WorldEvent[] = [];
+  private historyFilter = 'all';
   /** Extra buttons in the top bar (save, settings, star map...) */
   readonly actions: HTMLElement;
 
@@ -132,11 +134,13 @@ export class Hud {
   update(s: Snapshot): void {
     this.lastSnap = s;
     if (s.people) this.people = s.people;
+    if (s.chronicleReset) this.chronicle = [];
+    if (s.chronicle.length) this.chronicle.push(...s.chronicle);
     $('date').textContent = formatDate(s.time);
     $('clock').textContent = formatClock(s.time);
     $('weather').textContent = `${describeWeather(s.weather)} · ${Math.round(s.weather.tempC)}°C`;
     $('lag').hidden = !s.lagging;
-    $('popcount').textContent = `👥 ${s.stats.humans}`;
+    $('popcount').textContent = `👥 ${Math.round(s.stats.humans)} · 🏘 ${s.settlements.length} · 💡 ${s.stats.era}${s.stats.space ? ` · 🪐 ${s.stats.space.planetsKnown}` : ''}`;
     // The panel is redrawn a few times a second, not on every snapshot.
     if (performance.now() - this.lastPanelDraw > 250) this.redraw();
   }
@@ -149,6 +153,7 @@ export class Hud {
     else if (this.tab === 'people') this.renderPeople();
     else if (this.tab === 'world') this.renderWorld(s);
     else if (this.tab === 'history') this.renderHistory(s.events);
+    else if (this.tab === 'space') this.extraTabs.space?.(document.getElementById('tab-space')!, s);
   }
 
   showTooltip(tile: TileInfo | null, sx: number, sy: number): void {
@@ -292,12 +297,35 @@ export class Hud {
     drawHistory($<HTMLCanvasElement>('deer-history'), st.history, '#c8a26b');
   }
 
+  /** Other modules (e.g. space) can add a tab renderer here. */
+  readonly extraTabs: Record<string, (el: HTMLElement, s: Snapshot) => void> = {};
+
   private renderHistory(events: WorldEvent[]): void {
-    $('tab-history').innerHTML = `<ul id="events">${events
-      .slice()
-      .reverse()
-      .map((e) => `<li><span>${formatDate(e.time)}</span>${EVENT_ICONS[e.kind] ?? '•'} ${e.about >= 0 ? `<a data-npc="${e.about}">${esc(e.text)}</a>` : esc(e.text)}</li>`)
-      .join('')}</ul>`;
+    const filters: [string, string, string[]][] = [
+      ['all', 'All', []], ['people', 'People', ['birth', 'death', 'social']], ['society', 'Society', ['settlement', 'migration', 'law', 'build', 'economy']],
+      ['tech', 'Discoveries', ['tech', 'space']], ['conflict', 'Conflict', ['conflict']], ['disease', 'Disease', ['disease']],
+    ];
+    const kinds = filters.find((f) => f[0] === this.historyFilter)?.[2] ?? [];
+    const match = (e: WorldEvent) => !kinds.length || kinds.includes(e.kind);
+    const line = (e: WorldEvent) => `<li><span>${formatDate(e.time)}</span>${EVENT_ICONS[e.kind] ?? '•'} ${e.about >= 0 ? `<a data-npc="${e.about}">${esc(e.text)}</a>` : esc(e.text)}</li>`;
+    // The chronicle (important events) grouped by year, newest first; then recent news.
+    const byYear = new Map<number, WorldEvent[]>();
+    for (const e of this.chronicle.filter(match)) {
+      const y = Math.floor(e.time / 1440 / 120) + 1;
+      if (!byYear.has(y)) byYear.set(y, []);
+      byYear.get(y)!.push(e);
+    }
+    const years = [...byYear.entries()].sort((a, b) => b[0] - a[0]).slice(0, 80);
+    $('tab-history').innerHTML = `
+      <div class="chips">${filters.map(([id, label]) => `<button data-filter="${id}" class="${id === this.historyFilter ? 'active' : ''}">${label}</button>`).join('')}</div>
+      <h4>Latest news</h4><ul id="events">${events.filter(match).slice(-12).reverse().map(line).join('')}</ul>
+      <h4>Chronicle</h4><div id="events">${years.map(([y, es]) => `<h5>Year ${y}</h5><ul>${es.slice().reverse().map(line).join('')}</ul>`).join('') || '<p class="muted">Nothing historic yet.</p>'}</div>`;
+    for (const b of document.querySelectorAll<HTMLButtonElement>('#tab-history [data-filter]')) {
+      b.addEventListener('click', () => {
+        this.historyFilter = b.dataset.filter!;
+        this.redraw();
+      });
+    }
   }
 }
 

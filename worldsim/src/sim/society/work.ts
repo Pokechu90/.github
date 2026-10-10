@@ -148,7 +148,7 @@ export function doCivWork(world: World, n: Npc, dt: number): void {
     case 'research': {
       const focus = currentFocus(world, s);
       if (focus) {
-        let pts = (dt / 60) * (0.1 + n.skills.research * 0.3) * eff;
+        let pts = (dt / 60) * (0.04 + n.skills.research * 0.12) * eff * (hasTech(s, 'writing') ? 1 : 0.5);
         if (hasTech(s, 'printing')) pts *= 1.8;
         if (hasTech(s, 'computing')) pts *= 1.6;
         s.research[focus.id] = (s.research[focus.id] ?? 0) + pts;
@@ -276,4 +276,12 @@ function abandon(world: World, s: Settlement): void {
 
 export function techName(id: string): string {
   return TECH_BY_ID.get(id)?.name ?? id;
+}
+
+/** One batch of crafting done in bulk (distant settlements). */
+export function abstractCraft(world: World, s: Settlement): void {
+  const r = chooseRecipe(world, s);
+  if (!r) return;
+  for (const [k, v] of Object.entries(r.inputs)) s.stock[k as ResourceType] -= v ?? 0;
+  s.stock[r.out] += r.amount;
 }

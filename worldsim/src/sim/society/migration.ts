@@ -108,6 +108,12 @@ export function startMigration(world: World, from: Settlement, leader: Npc, reas
     to.stock[k] += take;
   }
   to.stock.wood += 10;
+  // Big cities also send off part of their statistical population.
+  if (from.abstractPop > 20) {
+    const moving = from.abstractPop * 0.12;
+    from.abstractPop -= moving;
+    to.abstractPop += moving;
+  }
   from.diplomacy[to.id] = 0.5;
   to.diplomacy[from.id] = 0.5;
 

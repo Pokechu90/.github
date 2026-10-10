@@ -11,7 +11,8 @@ import { ViewTracker } from './snapshot';
 import { applyChat, applyGoal, buildContext } from './npc/context';
 import { ageYears } from './npc/people';
 import { deserialize, serialize } from './save';
-import { getCalendar } from '../shared/time';
+import { updateTiers } from './tiers';
+import { MINUTES_PER_YEAR, getCalendar } from '../shared/time';
 
 const LOOP_MS = 50;
 const SNAPSHOT_MS = 66;
@@ -29,6 +30,7 @@ const view = new ViewTracker();
 let speed = 1;
 let last = performance.now();
 let lastSnapshot = 0;
+let lastOverview = 0;
 let simMs = 0;
 let lagging = false;
 
@@ -37,17 +39,33 @@ ctx.onmessage = (e) => {
   switch (msg.type) {
     case 'init': {
       world = new World(msg.seed);
+      world.fastForward = speed >= MINUTES_PER_YEAR / 60 - 1;
       const spawn = world.terrain.findSpawn();
       world.populate(spawn.x, spawn.y);
       ctx.postMessage({ type: 'ready', seed: msg.seed, spawn });
       break;
     }
-    case 'setSpeed':
+    case 'setSpeed': {
       speed = Math.max(0, msg.speed);
+      // From one game year per real minute upwards, switch to aggregate simulation.
+      const ff = speed >= MINUTES_PER_YEAR / 60 - 1;
+      if (world && ff !== world.fastForward) {
+        world.fastForward = ff;
+        updateTiers(world);
+      }
       break;
-    case 'viewport':
+    }
+    case 'viewport': {
       view.setViewport(msg);
+      if (world) {
+        const fx = (msg.x0 + msg.x1) / 2;
+        const fy = (msg.y0 + msg.y1) / 2;
+        const moved = !world.focus || Math.hypot(world.focus.x - fx, world.focus.y - fy) > 24;
+        world.focus = { x: fx, y: fy };
+        if (moved) updateTiers(world);
+      }
       break;
+    }
     case 'select':
       view.selected = msg.target;
       lastSnapshot = 0; // respond right away
@@ -127,6 +145,12 @@ setInterval(() => {
     simMs = 0;
     lagging = false;
     world.rebuildIndexes();
+  }
+
+  if (now - lastOverview > 1500) {
+    lastOverview = now;
+    const o = view.overview(world);
+    if (o) ctx.postMessage({ type: 'overview', ...o });
   }
 
   if (now - lastSnapshot >= SNAPSHOT_MS) {

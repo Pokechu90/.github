@@ -13,6 +13,7 @@ import { startThinking } from './llm/thinking';
 import { ChatBox } from './ui/chat';
 import { setupSettings } from './ui/settings';
 import { setupSaves } from './ui/saves';
+import { Minimap } from './ui/minimap';
 
 async function main(): Promise<void> {
   // The seed comes from the URL (?seed=123) so worlds can be shared.
@@ -42,6 +43,11 @@ async function main(): Promise<void> {
     },
     onFollow: (id) => (renderer.follow = id),
     onTalk: (id) => void chat.open(id),
+  });
+  const minimap = new Minimap(renderer.camera);
+  sim.on('overview', ({ chunks, reset }) => {
+    if (reset) minimap.reset();
+    minimap.addChunks(chunks);
   });
   const brain = new BrainClient();
   const chat = new ChatBox(sim, brain);
@@ -76,6 +82,7 @@ async function main(): Promise<void> {
   sim.on('snapshot', ({ snap }) => {
     renderer.applySnapshot(snap);
     hud.update(snap);
+    minimap.setSettlements(snap.settlements);
     const sel = snap.selected;
     if (pendingFocus && sel && sel.kind !== 'gone') {
       pendingFocus = false;

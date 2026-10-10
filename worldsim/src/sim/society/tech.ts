@@ -141,3 +141,13 @@ export function shareKnowledge(world: World, from: Settlement, to: Settlement, c
   const id = candidates[Math.floor(world.rand() * candidates.length)];
   discover(world, to, TECH_BY_ID.get(id)!, from);
 }
+
+/** Research done in bulk (distant settlements and statistical populations). */
+export function abstractResearch(world: World, s: Settlement, hours: number): void {
+  const focus = currentFocus(world, s);
+  if (!focus) return;
+  let pts = hours * 0.1;
+  if (hasTech(s, 'printing')) pts *= 1.8;
+  if (hasTech(s, 'computing')) pts *= 1.6;
+  s.research[focus.id] = (s.research[focus.id] ?? 0) + pts;
+}
