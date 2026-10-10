@@ -59,6 +59,11 @@ The game is a static website. The simulation runs entirely in the browser, so
 it can be hosted anywhere for free. When hosted without the brain server, NPCs
 use offline replies (or you can point the 🧠 settings at a server you run).
 
+**On claude.ai:** the game is also published as a Claude artifact (ask the owner
+for the link). There, NPC conversations use the *viewer's own* Claude account
+(the page asks for permission the first time you talk to someone), so no
+server or API key is needed, and 💾 Export asks before saving the file.
+
 **GitHub Pages:** this repository includes a workflow,
 `.github/workflows/worldsim-pages.yml`, that tests, builds and publishes the
 game whenever `worldsim/` changes on `main`. Enable it once in the repository's

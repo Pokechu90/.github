@@ -61,13 +61,28 @@ export function setupSaves(sim: SimClient, actions: HTMLElement, onLoaded: () =>
         else if (act === 'export') {
           status.textContent = 'Preparing file…';
           const s = await snapshot();
-          const url = URL.createObjectURL(new Blob([s.data], { type: 'application/json' }));
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `worldsim-seed${s.seed}-year${s.year}.json`;
-          a.click();
-          setTimeout(() => URL.revokeObjectURL(url), 5000);
-          status.textContent = `Exported (${(s.data.length / 1e6).toFixed(1)} MB).`;
+          const filename = `worldsim-seed${s.seed}-year${s.year}.json`;
+          const blob = new Blob([s.data], { type: 'application/json' });
+          // Inside claude.ai the page must ask the viewer to save files; elsewhere use a normal download.
+          const host = (window as unknown as { claude?: { use(n: string): Promise<unknown> } }).claude;
+          const downloads = host?.use ? ((await host.use('downloads')) as { save(r: { filename: string; data: Blob }): Promise<unknown> } | null) : null;
+          if (downloads) {
+            try {
+              await downloads.save({ filename, data: blob });
+              status.textContent = `Exported (${(s.data.length / 1e6).toFixed(1)} MB).`;
+            } catch (err) {
+              const code = (err as { code?: string }).code;
+              status.textContent = code === 'declined' ? 'Export cancelled.' : 'Saving files is not available here.';
+            }
+          } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+            status.textContent = `Exported (${(s.data.length / 1e6).toFixed(1)} MB).`;
+          }
         } else if (act === 'import') file.click();
       }),
     );

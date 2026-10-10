@@ -6,7 +6,7 @@
  *   always taking priority over background NPC thinking.
  * - Falls back to offline replies when the server or LLM isn't available.
  */
-import type { ChatRequest, ChatResult, DecideRequest, DecideResult } from '../shared/llm';
+import { CHAT_SYSTEM, EMOTIONS, INTENTS, chatUserPrompt, sanitizeChat, type ChatRequest, type ChatResult, type DecideRequest, type DecideResult } from '../shared/llm';
 import { loadSettings, saveSettings, type LlmSettings } from './settings';
 import { offlineReply } from './offline';
 
@@ -18,13 +18,28 @@ export interface BrainStatus {
   usedThisMinute: number;
 }
 
+/**
+ * When the game is opened as a claude.ai artifact, the page can ask Claude
+ * directly on the viewer's own account (they're asked for permission on the
+ * first chat). No server or API key needed. Typed loosely: it only exists there.
+ */
+type SampleFn = { json: (input: string, opts?: object) => Promise<unknown> };
+interface ClaudeHost {
+  use(name: string): Promise<unknown>;
+}
+
 export class BrainClient {
   settings: LlmSettings = loadSettings();
+  /** Claude via the claude.ai artifact runtime, if available. */
+  private sample: SampleFn | null = null;
+  /** Which brain answers: our server, Claude through claude.ai, or nobody (offline). */
+  mode: 'server' | 'claude.ai' | 'offline' = 'offline';
   status: BrainStatus = { online: false, provider: '', model: '', message: 'Checking…', usedThisMinute: 0 };
   private calls: number[] = [];
   private listeners: Array<() => void> = [];
 
   constructor() {
+    void this.detectSample();
     void this.checkHealth();
     setInterval(() => void this.checkHealth(), 30_000);
   }
@@ -48,11 +63,43 @@ export class BrainClient {
     return `${base}${path}`;
   }
 
+  private async detectSample(): Promise<void> {
+    const host = (window as unknown as { claude?: ClaudeHost }).claude;
+    if (!host?.use) return;
+    try {
+      const s = (await host.use('sample')) as SampleFn | null;
+      if (s) {
+        this.sample = s;
+        void this.checkHealth();
+      }
+    } catch {
+      /* not available here */
+    }
+  }
+
+  private useSampleStatus(): void {
+    this.mode = 'claude.ai';
+    this.status = {
+      ...this.status,
+      online: true,
+      provider: 'claude.ai',
+      model: 'your Claude account',
+      message: 'NPCs talk using Claude through your claude.ai account (you will be asked to allow it on your first chat). Background NPC thinking needs the brain server.',
+    };
+  }
+
   async checkHealth(): Promise<void> {
+    // Hosted as a claude.ai artifact without a custom server: use Claude directly.
+    if (this.sample && !this.settings.serverUrl) {
+      this.useSampleStatus();
+      this.emit();
+      return;
+    }
     try {
       const res = await fetch(this.url('/api/health'), { signal: AbortSignal.timeout(4000) });
       if (!res.ok) throw new Error(String(res.status));
       const h = (await res.json()) as { provider: string; model: string; configured: boolean };
+      this.mode = h.configured ? 'server' : 'offline';
       this.status = {
         ...this.status,
         online: h.configured,
@@ -61,7 +108,11 @@ export class BrainClient {
         message: h.configured ? `Connected: ${h.provider} / ${h.model}` : 'Brain server is running but has no LLM configured (add a key to .env). Using offline replies.',
       };
     } catch {
-      this.status = { ...this.status, online: false, provider: '', model: '', message: 'No brain server found. NPCs use simple offline replies. (Run "npm run dev" with an API key in .env.)' };
+      if (this.sample) this.useSampleStatus();
+      else {
+        this.mode = 'offline';
+        this.status = { ...this.status, online: false, provider: '', model: '', message: 'No brain server found. NPCs use simple offline replies. (Run "npm run dev" with an API key in .env.)' };
+      }
     }
     this.emit();
   }
@@ -80,6 +131,7 @@ export class BrainClient {
     }
     this.calls.push(Date.now());
     this.emit();
+    if (this.mode === 'claude.ai' && this.sample) return this.chatViaClaudeAi(req);
     try {
       const res = await fetch(this.url('/api/npc/chat'), {
         method: 'POST',
@@ -95,9 +147,28 @@ export class BrainClient {
     }
   }
 
-  /** Background thinking: only when enabled and there's spare budget (keeps 2 calls for chat). */
+  private async chatViaClaudeAi(req: ChatRequest): Promise<ChatResult> {
+    const prompt = `${CHAT_SYSTEM}\n\n${chatUserPrompt(req)}\n\nReply with only a JSON object with exactly these fields: ` +
+      `"reply" (string, what they say), "emotion" (one of ${EMOTIONS.join(', ')}), "affinity_change" (number from -0.3 to 0.3), ` +
+      `"remember" (one first-person sentence to remember, or ""), "importance" (0 to 1), "intent" (one of ${INTENTS.join(', ')}), ` +
+      `"new_goal" (string, or ""), "lied" (boolean).`;
+    try {
+      const raw = await this.sample!.json(prompt, { modelTier: 'quick', cache: false });
+      return { ...sanitizeChat((raw ?? {}) as Partial<ChatResult>), source: 'llm' };
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === 'not_granted' || code === 'sampling_disabled' || code === 'not_declared' || code === 'capability_disabled') {
+        // The viewer said no (or it's unavailable): stay offline for this visit.
+        this.sample = null;
+        void this.checkHealth();
+      }
+      return offlineReply(req);
+    }
+  }
+
+  /** Background thinking: only with our own server, when enabled and there's spare budget (keeps 2 calls for chat). */
   canThink(): boolean {
-    return this.status.online && this.settings.npcThinking && this.budget() > 2;
+    return this.mode === 'server' && this.status.online && this.settings.npcThinking && this.budget() > 2;
   }
 
   async decide(req: DecideRequest): Promise<DecideResult | null> {

@@ -58,7 +58,13 @@ async function main(): Promise<void> {
     renderer.reset();
     chat.close();
   });
-  sim.on('error', ({ message }) => alert(`Problem: ${message}`));
+  sim.on('error', ({ message }) => {
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = `Could not load that world: ${message}`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 8000);
+  });
   startThinking(sim, brain, () => hud.paused);
 
   attachInput(renderer.view, renderer.camera, {
