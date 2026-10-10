@@ -34,6 +34,7 @@ ctx.onmessage = (e) => {
     case 'init': {
       world = new World(msg.seed);
       const spawn = world.terrain.findSpawn();
+      world.populate(spawn.x, spawn.y);
       ctx.postMessage({ type: 'ready', seed: msg.seed, spawn });
       break;
     }

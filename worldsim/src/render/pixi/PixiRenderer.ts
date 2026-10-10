@@ -5,15 +5,16 @@
  * lightweight copies (sprites), interpolates animal movement between
  * snapshots so motion looks smooth, and recolours the land with the seasons.
  */
-import { Application, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { CHUNK_SIZE, chunkKey } from '../../shared/terrain';
 import { PLANTS, PlantStage } from '../../shared/species';
 import { getCalendar, seasonTempOffset } from '../../shared/time';
-import type { AnimalView, ChunkTerrainView, PlantView, SelectTarget, Snapshot } from '../../shared/protocol';
+import type { AnimalView, BuildingView, ChunkTerrainView, NpcView, PlantView, SelectTarget, Snapshot } from '../../shared/protocol';
+import { BUILDINGS } from '../../shared/people';
 import { Camera } from '../camera';
 import type { TileInfo, WorldRenderer } from '../renderer';
 import { paintChunk } from '../palette';
-import { SpriteTextures, UNITS_PER_TILE, type Baked, type LeafState } from './textures';
+import { SpriteTextures, UNITS_PER_TILE, makeLightTexture, type Baked, type LeafState } from './textures';
 import { Atmosphere } from './atmosphere';
 
 /** Below this zoom (pixels per tile) we only draw terrain: faster and cleaner. */
@@ -52,6 +53,28 @@ interface AnimalGfx {
   y: number;
 }
 
+interface PersonGfx {
+  view: NpcView;
+  root: Container;
+  body: Sprite;
+  carry: Sprite;
+  label: Text | null;
+  bodyKey: string;
+  x: number;
+  y: number;
+}
+
+interface BuildingGfx {
+  view: BuildingView;
+  sprite: Sprite;
+  key: string;
+  flame?: Sprite;
+  light?: Sprite;
+}
+
+/** People's names appear above them when zoomed in this far. */
+const NAME_ZOOM = 22;
+
 export class PixiRenderer implements WorldRenderer {
   readonly camera = new Camera();
   view!: HTMLElement;
@@ -64,9 +87,19 @@ export class PixiRenderer implements WorldRenderer {
   private atmosphere!: Atmosphere;
   private textures!: SpriteTextures;
 
+  private lightLayer = new Container();
+  private labelLayer = new Container();
+  private lightTexture!: Texture;
   private chunks = new Map<string, ChunkGfx>();
   private animals = new Map<number, AnimalGfx>();
+  private people = new Map<number, PersonGfx>();
+  private buildings = new Map<number, BuildingGfx>();
+  private townLabels = new Map<number, Text>();
+  private time = 0;
+  /** Id of the person the camera follows, if any. */
+  follow: number | null = null;
   private snap: Snapshot | null = null;
+  private detailShown = true;
   private seasonKey = '';
   private season = 0;
   private seasonTemp = 0;
@@ -86,7 +119,9 @@ export class PixiRenderer implements WorldRenderer {
     this.objectLayer.sortableChildren = true;
     this.worldLayer.addChild(this.terrainLayer, this.marker, this.objectLayer);
     this.atmosphere = new Atmosphere();
-    this.app.stage.addChild(this.worldLayer, this.atmosphere.container);
+    this.lightTexture = Texture.from(makeLightTexture());
+    this.lightLayer.blendMode = 'add';
+    this.app.stage.addChild(this.worldLayer, this.atmosphere.back, this.lightLayer, this.labelLayer, this.atmosphere.front);
 
     this.app.ticker.add((t) => this.frame(t.deltaMS));
   }
@@ -132,13 +167,159 @@ export class PixiRenderer implements WorldRenderer {
         this.animals.delete(id);
       }
     }
+
+    this.syncPeople(snap.npcs);
+    if (snap.buildings) this.syncBuildings(snap.buildings);
+    this.syncTownLabels(snap);
+  }
+
+  private syncPeople(npcs: NpcView[]): void {
+    const seen = new Set<number>();
+    for (const v of npcs) {
+      seen.add(v.id);
+      let g = this.people.get(v.id);
+      if (!g) {
+        const root = new Container();
+        const body = new Sprite();
+        const carry = new Sprite();
+        root.addChild(body, carry);
+        this.objectLayer.addChild(root);
+        g = { view: v, root, body, carry, label: null, bodyKey: '', x: v.x, y: v.y };
+        this.people.set(v.id, g);
+      }
+      if (Math.hypot(v.x - g.x, v.y - g.y) > 6) {
+        g.x = v.x;
+        g.y = v.y;
+      }
+      g.view = v;
+      const lying = v.action === 'sleep' || (v.action === 'rest' && v.sick);
+      const key = `${v.skin}:${v.hair}:${v.shirt}:${v.sex}:${v.stage}:${lying}`;
+      if (key !== g.bodyKey) {
+        g.bodyKey = key;
+        this.applyBaked(g.body, this.textures.person(v.skin, v.hair, v.shirt, v.sex, v.stage, lying), 1);
+      }
+      g.body.scale.x = Math.abs(g.body.scale.x) * v.facing;
+      g.body.tint = v.sick ? 0xc8e0b0 : 0xffffff;
+      g.root.visible = !v.hidden;
+      if (v.carrying && !lying) {
+        const b = this.textures.carry(v.carrying);
+        this.applyBaked(g.carry, b, 1);
+        g.carry.position.set(0.22 * v.facing, -0.42);
+        g.carry.visible = true;
+      } else {
+        g.carry.visible = false;
+      }
+    }
+    for (const [id, g] of this.people) {
+      if (!seen.has(id)) {
+        g.root.destroy({ children: true });
+        g.label?.destroy();
+        this.people.delete(id);
+      }
+    }
+  }
+
+  private syncBuildings(list: BuildingView[]): void {
+    const seen = new Set<number>();
+    for (const v of list) {
+      seen.add(v.id);
+      let g = this.buildings.get(v.id);
+      if (!g) {
+        const sprite = new Sprite();
+        sprite.position.set(v.x, v.y);
+        this.objectLayer.addChild(sprite);
+        g = { view: v, sprite, key: '' };
+        this.buildings.set(v.id, g);
+        if (v.kind === 'campfire') {
+          g.flame = new Sprite();
+          this.applyBaked(g.flame, this.textures.flame(), 1);
+          g.flame.position.set(v.x, v.y - 0.1);
+          g.flame.zIndex = v.y + 0.01;
+          this.objectLayer.addChild(g.flame);
+        }
+        if (v.kind === 'campfire' || v.kind === 'house' || v.kind === 'hut' || v.kind === 'smithy') {
+          g.light = new Sprite(this.lightTexture);
+          g.light.anchor.set(0.5);
+          const r = v.kind === 'campfire' ? 9 : 4;
+          g.light.width = g.light.height = r;
+          g.light.position.set(v.x, v.y - 0.3);
+          this.lightLayer.addChild(g.light);
+        }
+      }
+      g.view = v;
+      const site = v.progress < 1;
+      const key = v.kind === 'farm' ? `farm:${Math.min(4, Math.floor(v.crop * 5))}` : `${v.kind}:${site}`;
+      if (key !== g.key) {
+        g.key = key;
+        const baked = v.kind === 'farm' ? this.textures.field(Math.min(4, Math.floor(v.crop * 5))) : this.textures.building(v.kind, site);
+        this.applyBaked(g.sprite, baked, 1);
+      }
+      g.sprite.alpha = site ? 0.55 + v.progress * 0.45 : 1;
+      // Fields lie flat under everything else.
+      g.sprite.zIndex = v.kind === 'farm' ? -1e6 : v.y;
+    }
+    for (const [id, g] of this.buildings) {
+      if (!seen.has(id)) {
+        g.sprite.destroy();
+        g.flame?.destroy();
+        g.light?.destroy();
+        this.buildings.delete(id);
+      }
+    }
+  }
+
+  private syncTownLabels(snap: Snapshot): void {
+    const seen = new Set<number>();
+    for (const s of snap.settlements) {
+      seen.add(s.id);
+      let t = this.townLabels.get(s.id);
+      if (!t) {
+        t = new Text({
+          text: '',
+          style: { fontFamily: 'system-ui, sans-serif', fontSize: 14, fontWeight: '600', fill: 0xffffff, stroke: { color: 0x0b1020, width: 4 } },
+          resolution: 2,
+        });
+        t.anchor.set(0.5, 1);
+        this.labelLayer.addChild(t);
+        this.townLabels.set(s.id, t);
+      }
+      t.text = `${s.name} · ${s.tier} · ${s.population}`;
+      (t as Text & { wx?: number; wy?: number }).wx = s.x;
+      (t as Text & { wx?: number; wy?: number }).wy = s.y;
+    }
+    for (const [id, t] of this.townLabels) {
+      if (!seen.has(id)) {
+        t.destroy();
+        this.townLabels.delete(id);
+      }
+    }
   }
 
   pick(sx: number, sy: number): SelectTarget | null {
-    if (!this.wantsDetail()) return null;
     const p = this.camera.screenToWorld(sx, sy);
+    if (!this.wantsDetail()) {
+      // Zoomed out: clicking a town label selects nothing but recentres there.
+      for (const s of this.snap?.settlements ?? []) {
+        if (Math.hypot(s.x - p.x, s.y - p.y) < 30 / this.camera.zoom + 4) {
+          this.camera.centerOn(s.x, s.y);
+          this.camera.zoom = 16;
+          return null;
+        }
+      }
+      return null;
+    }
     let best: SelectTarget | null = null;
-    let bestD = 1.1;
+    let bestD = 0.9;
+    for (const [id, g] of this.people) {
+      if (!g.root.visible) continue;
+      const d = Math.hypot(g.x - p.x, g.y - 0.6 - p.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { kind: 'npc', id };
+      }
+    }
+    if (best) return best;
+    bestD = 1.1;
     for (const [id, g] of this.animals) {
       const d = Math.hypot(g.x - p.x, g.y - 0.5 - p.y);
       if (d < bestD) {
@@ -147,6 +328,14 @@ export class PixiRenderer implements WorldRenderer {
       }
     }
     if (best) return best;
+    for (const [id, g] of this.buildings) {
+      const size = BUILDINGS[g.view.kind]?.size ?? 1;
+      const dx = Math.abs(g.view.x - p.x);
+      const dy = g.view.y - p.y;
+      if (g.view.kind === 'farm' ? dx < 1.5 && Math.abs(dy) < 1.5 : dx < 0.6 + size * 0.4 && dy > -0.3 && dy < 1.2 + size * 0.5) {
+        return { kind: 'building', id };
+      }
+    }
     bestD = 1.2;
     const c = this.chunks.get(chunkKey(Math.floor(p.x / CHUNK_SIZE), Math.floor(p.y / CHUNK_SIZE)));
     for (const chunk of c ? [c, ...this.neighbours(c)] : []) {
@@ -178,16 +367,58 @@ export class PixiRenderer implements WorldRenderer {
 
   private frame(deltaMS: number): void {
     const cam = this.camera;
+    this.time += deltaMS;
     cam.resize(this.app.screen.width, this.app.screen.height);
-    this.worldLayer.scale.set(cam.zoom);
-    this.worldLayer.position.set(
-      Math.round(cam.width / 2 - cam.x * cam.zoom),
-      Math.round(cam.height / 2 - cam.y * cam.zoom),
-    );
+    const followed = this.follow !== null ? this.people.get(this.follow) : undefined;
+    if (followed) cam.centerOn(cam.x + (followed.x - cam.x) * 0.15, cam.y + (followed.y - 0.5 - cam.y) * 0.15);
+    for (const layer of [this.worldLayer, this.lightLayer]) {
+      layer.scale.set(cam.zoom);
+      layer.position.set(Math.round(cam.width / 2 - cam.x * cam.zoom), Math.round(cam.height / 2 - cam.y * cam.zoom));
+    }
 
     const detail = this.wantsDetail();
-    if (!detail && this.objectLayer.visible) this.clearObjects();
-    this.objectLayer.visible = detail;
+    if (!detail && this.detailShown) this.clearObjects();
+    this.detailShown = detail;
+
+    // People walk smoothly between snapshots.
+    const kp = Math.min(1, deltaMS / 90);
+    const showNames = cam.zoom >= NAME_ZOOM;
+    for (const g of this.people.values()) {
+      g.x += (g.view.x - g.x) * kp;
+      g.y += (g.view.y - g.y) * kp;
+      g.root.position.set(g.x, g.y);
+      g.root.zIndex = g.y + 0.001;
+      if (showNames && g.root.visible && g.view.stage !== 'baby') {
+        if (!g.label) {
+          g.label = new Text({ text: g.view.name, style: { fontFamily: 'system-ui, sans-serif', fontSize: 11, fill: 0xffffff, stroke: { color: 0x000000, width: 3 } }, resolution: 2 });
+          g.label.anchor.set(0.5, 1);
+          this.labelLayer.addChild(g.label);
+        }
+        g.label.visible = true;
+        g.label.position.set((g.x - cam.x) * cam.zoom + cam.width / 2, (g.y - (g.view.stage === 'child' ? 0.95 : 1.3) - cam.y) * cam.zoom + cam.height / 2);
+      } else if (g.label) {
+        g.label.visible = false;
+      }
+    }
+    // Town names when zoomed out.
+    for (const t of this.townLabels.values()) {
+      const w = t as Text & { wx?: number; wy?: number };
+      t.visible = cam.zoom < 14;
+      t.position.set(((w.wx ?? 0) - cam.x) * cam.zoom + cam.width / 2, ((w.wy ?? 0) - 2 - cam.y) * cam.zoom + cam.height / 2);
+    }
+    // Firelight flickers at night.
+    const dark = this.atmosphere.darkness;
+    this.lightLayer.visible = dark > 0.05;
+    for (const g of this.buildings.values()) {
+      if (g.flame) {
+        const f = 0.85 + Math.sin(this.time / 90 + g.view.id) * 0.1 + Math.sin(this.time / 37 + g.view.id * 3) * 0.06;
+        g.flame.scale.set(f / UNITS_PER_TILE, (f + 0.1) / UNITS_PER_TILE);
+      }
+      if (g.light) {
+        const lit = g.view.kind === 'campfire' ? 0.9 : g.view.progress >= 1 ? 0.45 : 0;
+        g.light.alpha = dark * lit * (0.85 + Math.sin(this.time / 120 + g.view.id) * 0.1);
+      }
+    }
 
     // Smoothly move animals towards their latest reported positions.
     const k = Math.min(1, deltaMS / 90);
@@ -209,7 +440,15 @@ export class PixiRenderer implements WorldRenderer {
     if (!sel || sel.kind === 'gone' || !this.wantsDetail()) return;
     let x = sel.x;
     let y = sel.y;
-    if (sel.kind === 'animal') {
+    if (sel.kind === 'npc') {
+      const g = this.people.get(sel.id);
+      if (g) {
+        x = g.x;
+        y = g.y;
+      }
+    } else if (sel.kind === 'building') {
+      y += 0.1;
+    } else if (sel.kind === 'animal') {
       const g = this.animals.get(sel.id);
       if (g) {
         x = g.x;
@@ -348,6 +587,11 @@ export class PixiRenderer implements WorldRenderer {
     }
     for (const g of this.animals.values()) g.sprite.destroy();
     this.animals.clear();
+    for (const g of this.people.values()) {
+      g.root.destroy({ children: true });
+      g.label?.destroy();
+    }
+    this.people.clear();
   }
 
   private updateSeason(time: number): void {

@@ -24,28 +24,45 @@ async function main(): Promise<void> {
   const renderer = new PixiRenderer();
   await renderer.init(document.getElementById('game')!);
 
-  const hud = new Hud(
-    seed,
-    (speed) => sim.send({ type: 'setSpeed', speed }),
-    () => {
+  let pendingFocus = false;
+  const hud = new Hud(seed, {
+    onSpeed: (speed) => sim.send({ type: 'setSpeed', speed }),
+    onNewWorld: () => {
       params.set('seed', String(Math.floor(Math.random() * 1e9)));
       location.search = params.toString();
     },
-  );
+    onSelect: (target, focus) => {
+      sim.send({ type: 'select', target });
+      pendingFocus = focus;
+    },
+    onFollow: (id) => (renderer.follow = id),
+    onTalk: (id) => window.dispatchEvent(new CustomEvent('worldsim:talk', { detail: id })),
+  });
 
   attachInput(renderer.view, renderer.camera, {
-    onClick: (sx, sy) => sim.send({ type: 'select', target: renderer.pick(sx, sy) }),
+    onClick: (sx, sy) => {
+      const target = renderer.pick(sx, sy);
+      sim.send({ type: 'select', target });
+      if (target) hud.showTab('inspect');
+    },
     onHover: (sx, sy) => hud.showTooltip(renderer.tileAt(sx, sy), sx, sy),
   });
   renderer.view.addEventListener('pointerleave', () => hud.showTooltip(null, 0, 0));
 
   sim.on('ready', ({ spawn }) => {
     renderer.camera.centerOn(spawn.x + 0.5, spawn.y + 0.5);
+    renderer.camera.zoom = 22;
     document.getElementById('loading')?.remove();
   });
   sim.on('snapshot', ({ snap }) => {
     renderer.applySnapshot(snap);
     hud.update(snap);
+    const sel = snap.selected;
+    if (pendingFocus && sel && sel.kind !== 'gone') {
+      pendingFocus = false;
+      renderer.camera.centerOn(sel.x, sel.y);
+      if (renderer.camera.zoom < 20) renderer.camera.zoom = 24;
+    }
   });
 
   // Tell the simulation what the camera sees, whenever it changes.

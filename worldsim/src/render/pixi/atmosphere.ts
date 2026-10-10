@@ -13,16 +13,22 @@ interface Drop {
 }
 
 export class Atmosphere {
-  readonly container = new Container();
+  /** Darkening layer (goes under the lights). */
+  readonly back = new Container();
+  /** Rain and snow (on top of everything). */
+  readonly front = new Container();
   private tint = new Sprite(Texture.WHITE);
   private precipitation = new Graphics();
   private drops: Drop[] = [];
+  /** 0 = day, 1 = darkest night (lights use this). */
+  darkness = 0;
 
   constructor() {
     // "Multiply" darkens everything underneath by the tint colour: white = no
     // change, deep blue = night.
     this.tint.blendMode = 'multiply';
-    this.container.addChild(this.tint, this.precipitation);
+    this.back.addChild(this.tint);
+    this.front.addChild(this.precipitation);
   }
 
   update(snap: Snapshot, width: number, height: number, deltaMS: number): void {
@@ -30,6 +36,7 @@ export class Atmosphere {
     this.tint.height = height;
 
     const light = daylight(snap.time);
+    this.darkness = 1 - light;
     const w = snap.weather;
     // Night colour, blended with a warm glow at dawn and dusk.
     const night: [number, number, number] = [0.22, 0.27, 0.45];

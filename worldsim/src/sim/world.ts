@@ -11,12 +11,30 @@ import { MINUTES_PER_DAY, START_TIME, getCalendar } from '../shared/time';
 import { ANIMALS, PLANTS, PlantStage } from '../shared/species';
 import type { WeatherView } from '../shared/protocol';
 import { Climate } from './climate';
-import type { Animal, Chunk, Plant, WorldState } from './state';
-import { spawnInitialPlants, updateGrassDaily, updatePlantsDaily } from './ecology/plants';
+import type { Animal, Building, Chunk, JobKey, Npc, Plant, Settlement, WorldState } from './state';
+import { removePlantOnTile, spawnInitialPlants, updateGrassDaily, updatePlantsDaily } from './ecology/plants';
 import { spawnInitialAnimals, updateAnimals, updateAnimalsDaily } from './ecology/animals';
+import { updateNpcs, createStartingSettlement } from './npc/npcs';
+import { updateHealthDaily } from './npc/health';
+import { updateRomanceDaily } from './npc/social';
+import { assignJobs, updateLifeDaily } from './npc/life';
+import { totalFood, updateSettlementDaily } from './society/settlement';
+
+/**
+ * Extension points used by later systems (economy, technology, migration,
+ * space) so the core loop doesn't need to know about them.
+ */
+export interface WorldHooks {
+  tryTask?: (world: World, n: Npc, task: string) => boolean;
+  doWork?: (world: World, n: Npc, dt: number) => void;
+  jobDemand?: (world: World, s: Settlement, workers: number) => Partial<Record<JobKey, number>>;
+  onSettlementFounded?: (world: World, s: Settlement) => void;
+  daily?: Array<(world: World) => void>;
+  tick?: Array<(world: World, dt: number) => void>;
+}
 
 const HISTORY_DAYS = 360;
-const MAX_EVENTS = 200;
+const MAX_EVENTS = 600;
 
 export class World {
   readonly state: WorldState;
@@ -26,6 +44,17 @@ export class World {
   /** Lookup tables rebuilt every tick (cheap, and never stale). */
   private animalsByChunk = new Map<string, Animal[]>();
   private animalsById = new Map<number, Animal>();
+  private npcsById = new Map<number, Npc>();
+  private npcsBySettlement = new Map<number, Npc[]>();
+  private npcsByChunk = new Map<string, Npc[]>();
+  private buildingsById = new Map<number, Building>();
+  private buildingsBySettlement = new Map<number, Building[]>();
+  private buildingsDirty = true;
+  /** Targets (plants, animals, patients) claimed by someone: target id -> npc id. */
+  private reservations = new Map<number, number>();
+  /** Bumped whenever buildings change, so the renderer knows to update. */
+  buildingsVersion = 0;
+  readonly hooks: WorldHooks = { daily: [], tick: [] };
 
   constructor(seed: number) {
     this.terrain = new TerrainGenerator(seed);
@@ -39,10 +68,20 @@ export class World {
       nextId: 1,
       chunks: new Map(),
       animals: [],
-      stats: { births: 0, deaths: {}, history: [], peakDeer: 0 },
+      npcs: [],
+      deceased: [],
+      settlements: [],
+      buildings: [],
+      stats: { births: 0, deaths: {}, history: [], peakDeer: 0, peopleHistory: [], humanBirths: 0, humanDeaths: {} },
       events: [],
     };
-    this.log(`The world was born from seed ${seed}.`);
+    this.log(`The world was born from seed ${seed}.`, 'world');
+  }
+
+  /** Places the first settlers. Call once for a brand-new world. */
+  populate(x: number, y: number): void {
+    createStartingSettlement(this, x, y);
+    this.rebuildIndexes();
   }
 
   // ---------- Time ----------
@@ -70,6 +109,8 @@ export class World {
     this.state.time += dt;
     this.rebuildIndexes();
     updateAnimals(this, dt);
+    updateNpcs(this, dt);
+    for (const fn of this.hooks.tick ?? []) fn(this, dt);
 
     const day = Math.floor(this.state.time / MINUTES_PER_DAY);
     while (this.state.lastDay < day) {
@@ -80,14 +121,28 @@ export class World {
 
   private daily(): void {
     const cal = getCalendar(this.state.time);
-    if (cal.dayOfSeason === 1) this.log(`${cal.seasonName} begins (year ${cal.year}).`);
+    if (cal.dayOfSeason === 1 && cal.season === 0) this.log(`Year ${cal.year} begins.`, 'world');
 
     for (const chunk of this.state.chunks.values()) {
       updateGrassDaily(this, chunk);
       updatePlantsDaily(this, chunk);
+      chunk.fish = Math.min(chunk.fishMax, chunk.fish + chunk.fishMax * 0.06);
     }
     this.rebuildIndexes();
     updateAnimalsDaily(this);
+
+    // People and society.
+    for (const s of this.state.settlements) if (!s.abandoned) updateSettlementDaily(this, s);
+    updateHealthDaily(this);
+    this.rebuildIndexes();
+    updateRomanceDaily(this);
+    updateLifeDaily(this);
+    this.rebuildIndexes();
+    if (cal.dayOfSeason % 10 === 1) for (const s of this.state.settlements) if (!s.abandoned) this.assignJobsFor(s);
+    for (const fn of this.hooks.daily ?? []) fn(this);
+    const ph = this.state.stats.peopleHistory;
+    ph.push(this.state.npcs.length + this.state.settlements.reduce((a, s) => a + s.abstractPop, 0));
+    if (ph.length > HISTORY_DAYS) ph.shift();
 
     // Population history for the graph, plus notable milestones.
     const deer = this.state.animals.length;
@@ -96,7 +151,7 @@ export class World {
     if (h.length > HISTORY_DAYS) h.shift();
     if (deer > this.state.stats.peakDeer * 1.25 && deer >= 20) {
       this.state.stats.peakDeer = deer;
-      this.log(`The deer population reached a new high of ${deer}.`);
+      this.log(`The deer population reached a new high of ${deer}.`, 'nature');
     }
   }
 
@@ -117,10 +172,12 @@ export class World {
 
     const terrain = this.terrain.generateChunk(cx, cy);
     let grassMax = 0;
+    let water = 0;
     const shore: number[] = [];
     for (let i = 0; i < terrain.biomes.length; i++) {
       const info = BIOMES[terrain.biomes[i] as Biome];
       grassMax += info.grass;
+      if (info.water) water++;
       if (!info.water && info.walkable && touchesFreshWater(terrain.biomes, i)) shore.push(i);
     }
     const chunk: Chunk = {
@@ -133,6 +190,8 @@ export class World {
       grass: grassMax * 0.8,
       grassMax,
       shore,
+      fish: water * 0.5,
+      fishMax: water * 0.5,
       version: 0,
     };
     this.state.chunks.set(chunk.key, chunk);
@@ -240,6 +299,118 @@ export class World {
       list.push(a);
       this.animalsById.set(a.id, a);
     }
+    this.npcsById.clear();
+    this.npcsBySettlement.clear();
+    this.npcsByChunk.clear();
+    for (const n of this.state.npcs) {
+      this.npcsById.set(n.id, n);
+      let list = this.npcsBySettlement.get(n.settlementId);
+      if (!list) this.npcsBySettlement.set(n.settlementId, (list = []));
+      list.push(n);
+      const key = chunkKey(Math.floor(n.x / CHUNK_SIZE), Math.floor(n.y / CHUNK_SIZE));
+      let cl = this.npcsByChunk.get(key);
+      if (!cl) this.npcsByChunk.set(key, (cl = []));
+      cl.push(n);
+    }
+    if (this.buildingsDirty) {
+      this.buildingsDirty = false;
+      this.buildingsById.clear();
+      this.buildingsBySettlement.clear();
+      for (const b of this.state.buildings) {
+        this.buildingsById.set(b.id, b);
+        let list = this.buildingsBySettlement.get(b.settlementId);
+        if (!list) this.buildingsBySettlement.set(b.settlementId, (list = []));
+        list.push(b);
+      }
+    }
+  }
+
+  /** Removes an animal (hunted, eaten by a predator...). */
+  killAnimal(a: Animal, cause: string): void {
+    const i = this.state.animals.indexOf(a);
+    if (i < 0) return;
+    this.state.animals.splice(i, 1);
+    this.animalsById.delete(a.id);
+    this.recordDeath(cause);
+  }
+
+  // ---------- People & settlements ----------
+
+  npcById(id: number): Npc | undefined {
+    return this.npcsById.get(id);
+  }
+
+  residentsOf(settlementId: number): Npc[] {
+    return this.npcsBySettlement.get(settlementId) ?? [];
+  }
+
+  npcsInChunk(key: string): Npc[] {
+    return this.npcsByChunk.get(key) ?? [];
+  }
+
+  settlement(id: number): Settlement | undefined {
+    return this.state.settlements.find((s) => s.id === id);
+  }
+
+  building(id: number): Building | undefined {
+    if (this.buildingsDirty) this.rebuildIndexes();
+    return this.buildingsById.get(id);
+  }
+
+  buildingsOf(settlementId: number): Building[] {
+    if (this.buildingsDirty) this.rebuildIndexes();
+    return this.buildingsBySettlement.get(settlementId) ?? [];
+  }
+
+  markBuildingsChanged(_b?: Building): void {
+    this.buildingsDirty = true;
+    this.buildingsVersion++;
+  }
+
+  removeBuilding(b: Building): void {
+    const i = this.state.buildings.indexOf(b);
+    if (i >= 0) this.state.buildings.splice(i, 1);
+    for (const n of this.state.npcs) if (n.homeId === b.id) n.homeId = -1;
+    this.markBuildingsChanged(b);
+  }
+
+  removePlantAt(x: number, y: number): void {
+    const c = this.chunkAtTile(x, y);
+    if (c) removePlantOnTile(this, c, x, y);
+  }
+
+  reserve(targetId: number, npcId: number): void {
+    this.reservations.set(targetId, npcId);
+  }
+
+  isReserved(targetId: number, npcId: number): boolean {
+    const by = this.reservations.get(targetId);
+    return by !== undefined && by !== npcId && this.npcsById.has(by);
+  }
+
+  release(targetId: number): void {
+    this.reservations.delete(targetId);
+  }
+
+  releaseAll(npcId: number): void {
+    for (const [t, by] of this.reservations) if (by === npcId) this.reservations.delete(t);
+  }
+
+  assignJobsFor(s: Settlement): void {
+    this.rebuildIndexes();
+    assignJobs(this, s);
+  }
+
+  /** How badly the settlement needs this job done right now (0..0.6). */
+  settlementUrgency(settlementId: number, job: string): number {
+    const s = this.settlement(settlementId);
+    if (!s) return 0;
+    const pop = this.residentsOf(settlementId).length;
+    const foodDays = totalFood(s) / Math.max(1, pop);
+    if (['forager', 'hunter', 'fisher', 'farmer'].includes(job)) return foodDays < 3 ? 0.6 : foodDays < 8 ? 0.3 : 0;
+    if (job === 'builder') return this.buildingsOf(settlementId).some((b) => b.progress < 1) ? 0.3 : 0;
+    if (job === 'healer') return this.residentsOf(settlementId).some((n) => n.illness) ? 0.4 : 0;
+    return 0;
   }
 
   // ---------- Bookkeeping ----------
@@ -253,8 +424,8 @@ export class World {
     d[cause] = (d[cause] ?? 0) + 1;
   }
 
-  log(text: string): void {
-    this.state.events.push({ time: this.state.time, text });
+  log(text: string, kind = 'world', about = -1): void {
+    this.state.events.push({ time: this.state.time, text, kind, about });
     if (this.state.events.length > MAX_EVENTS) this.state.events.shift();
   }
 

@@ -10,7 +10,9 @@
 
 export type SelectTarget =
   | { kind: 'animal'; id: number }
-  | { kind: 'plant'; id: number; chunk: string };
+  | { kind: 'plant'; id: number; chunk: string }
+  | { kind: 'npc'; id: number }
+  | { kind: 'building'; id: number };
 
 export type ToSim =
   | { type: 'init'; seed: number }
@@ -62,6 +64,51 @@ export interface AnimalView {
   facing: 1 | -1;
 }
 
+export interface NpcView {
+  id: number;
+  x: number;
+  y: number;
+  name: string;
+  sex: 'female' | 'male';
+  stage: 'baby' | 'child' | 'adult' | 'elder';
+  skin: number;
+  hair: number;
+  shirt: number;
+  action: string;
+  facing: 1 | -1;
+  carrying: string | null;
+  /** Indoors (asleep at home): not drawn. */
+  hidden: boolean;
+  sick: boolean;
+}
+
+export interface BuildingView {
+  id: number;
+  kind: string;
+  x: number;
+  y: number;
+  progress: number;
+  crop: number;
+  settlementId: number;
+}
+
+export interface SettlementView {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  tier: string;
+  population: number;
+}
+
+export interface PersonSummary {
+  id: number;
+  name: string;
+  age: number;
+  job: string;
+  settlement: string;
+}
+
 export interface WeatherView {
   cloud: number; // 0..1
   rain: number; // 0..1
@@ -93,6 +140,39 @@ export type SelectedInfo =
       fruit: number;
       notes: string[];
     }
+  | {
+      kind: 'npc';
+      id: number;
+      x: number;
+      y: number;
+      title: string;
+      subtitle: string;
+      thought: string;
+      goal: string | null;
+      doing: string;
+      mood: number;
+      needs: { label: string; value: number }[];
+      health: number;
+      conditions: string[];
+      traits: string[];
+      values: string[];
+      skills: { label: string; value: number }[];
+      family: { relation: string; name: string; id: number; alive: boolean }[];
+      relationships: { name: string; id: number; affinity: number; label: string }[];
+      memories: { text: string; when: string; source: string | null; lasting: boolean }[];
+      playerAffinity: number;
+    }
+  | {
+      kind: 'building';
+      id: number;
+      x: number;
+      y: number;
+      title: string;
+      settlement: string;
+      progress: number;
+      residents: { name: string; id: number }[];
+      notes: string[];
+    }
   | { kind: 'gone'; text: string };
 
 export interface WorldStats {
@@ -103,11 +183,20 @@ export interface WorldStats {
   chunksLoaded: number;
   /** Deer population sampled once per game day, most recent last. */
   history: number[];
+  /** Human population sampled once per game day. */
+  peopleHistory: number[];
+  humans: number;
+  humanBirths: number;
+  humanDeaths: Record<string, number>;
 }
 
 export interface WorldEvent {
   time: number;
   text: string;
+  /** birth, death, social, build, disease, settlement, tech, space, world... */
+  kind: string;
+  /** Who it's about (npc id), or -1. */
+  about: number;
 }
 
 export interface Snapshot {
@@ -121,6 +210,12 @@ export interface Snapshot {
   chunks: ChunkView[];
   dropped: string[];
   animals: AnimalView[];
+  npcs: NpcView[];
+  /** Sent when buildings change or come into view; otherwise null (unchanged). */
+  buildings: BuildingView[] | null;
+  settlements: SettlementView[];
+  /** Everyone in the settlement nearest the camera (sent about once a second). */
+  people: PersonSummary[] | null;
   selected: SelectedInfo | null;
   stats: WorldStats;
   events: WorldEvent[];

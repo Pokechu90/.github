@@ -252,3 +252,44 @@ function chunkTileTemp(chunk: Chunk, p: Plant): number {
 function inWindow(day: number, from: number, to: number): boolean {
   return day >= from && day <= to;
 }
+
+/** What people get from harvesting one piece of fruit from each species. */
+export const HARVEST: Record<number, { resource: 'fruit' | 'grain'; per: number }> = {
+  2: { resource: 'fruit', per: 0.5 }, // apples
+  3: { resource: 'fruit', per: 0.2 }, // berries
+  4: { resource: 'grain', per: 0.6 }, // wild wheat
+  5: { resource: 'fruit', per: 0.4 }, // prickly pears
+};
+
+/** Picks all ripe fruit from a plant. Returns the harvest, or null. */
+export function harvestPlant(chunk: Chunk, plant: Plant): { resource: 'fruit' | 'grain'; amount: number } | null {
+  const h = HARVEST[plant.species];
+  if (!h || plant.fruit < 1) return null;
+  const amount = Math.floor(plant.fruit) * h.per;
+  plant.fruit = 0;
+  chunk.version++;
+  return { resource: h.resource, amount };
+}
+
+/** Removes whatever plant grows on a tile (e.g. a tree felled or land cleared). */
+export function removePlantOnTile(world: World, chunk: Chunk, x: number, y: number): Plant | null {
+  const i = chunk.plants.findIndex((p) => p.x === x && p.y === y);
+  if (i < 0) return null;
+  const p = chunk.plants[i];
+  removePlantAt(world, chunk, i);
+  chunk.version++;
+  return p;
+}
+
+/** Plants a new seedling (used by farmers and foresters). */
+export function sowPlant(world: World, chunk: Chunk, species: number, x: number, y: number): Plant | null {
+  if (!world.spaceFree(x, y, PLANTS[species].isTree)) return null;
+  const sp = PLANTS[species];
+  const plant: Plant = {
+    id: world.newId(), species, x, y, ageDays: 0,
+    lifespanDays: sp.lifespanYears[0] * DAYS_PER_YEAR, stage: PlantStage.Sprout, health: 1, fruit: 0,
+  };
+  addPlant(world, chunk, plant);
+  chunk.version++;
+  return plant;
+}

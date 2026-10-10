@@ -11,6 +11,9 @@ import { DAYS_PER_YEAR } from '../shared/time';
 import type { ChunkView, SelectTarget, SelectedInfo, Snapshot } from '../shared/protocol';
 import { fruitLevel } from './ecology/plants';
 import type { World } from './world';
+import { ageYears, fullName } from './npc/people';
+import { describeBuilding, describeNpc } from './npc/describe';
+import { JOBS } from '../shared/people';
 
 /** Chunks of margin kept loaded around the visible area. */
 const MARGIN = 1;
@@ -29,6 +32,9 @@ export class ViewTracker {
   private viewport: Viewport = { x0: 0, y0: 0, x1: 0, y1: 0, detail: true };
   private sentTerrain = new Set<string>();
   private sentPlants = new Map<string, number>();
+  private sentBuildingsVersion = -1;
+  private sentBuildingsView = '';
+  private lastPeopleList = 0;
   selected: SelectTarget | null = null;
 
   setViewport(v: Viewport): void {
@@ -122,6 +128,64 @@ export class ViewTracker {
       }
     }
 
+    const npcs: Snapshot['npcs'] = [];
+    for (const key of visibleKeys) {
+      for (const n of world.npcsInChunk(key)) {
+        const age = ageYears(n);
+        const home = world.building(n.homeId);
+        npcs.push({
+          id: n.id,
+          x: n.x,
+          y: n.y,
+          name: n.firstName,
+          sex: n.sex,
+          stage: age < 3 ? 'baby' : age < 13 ? 'child' : age < 60 ? 'adult' : 'elder',
+          skin: n.appearance.skin,
+          hair: n.appearance.hair,
+          shirt: n.appearance.shirt,
+          action: n.action.kind,
+          facing: n.facing,
+          carrying: n.carrying && n.carrying.amount >= 0.5 ? n.carrying.type : null,
+          hidden: n.action.kind === 'sleep' && !!home && Math.hypot(home.x - n.x, home.y - n.y) < 1.5,
+          sick: !!n.illness,
+        });
+      }
+    }
+
+    // Buildings: resend when they change or the view moves to new chunks.
+    let buildings: Snapshot['buildings'] = null;
+    const viewSig = visible.length ? `${visible[0][0]},${visible[0][1]},${visible.length}` : '';
+    if (world.buildingsVersion !== this.sentBuildingsVersion || viewSig !== this.sentBuildingsView) {
+      this.sentBuildingsVersion = world.buildingsVersion;
+      this.sentBuildingsView = viewSig;
+      const v = this.viewport;
+      const pad = CHUNK_SIZE * (MARGIN + 1);
+      buildings = world.state.buildings
+        .filter((b) => b.x > v.x0 - pad && b.x < v.x1 + pad && b.y > v.y0 - pad && b.y < v.y1 + pad)
+        .map((b) => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, progress: b.progress, crop: b.crop, settlementId: b.settlementId }));
+    }
+
+    const settlements = world.state.settlements
+      .filter((st) => !st.abandoned)
+      .map((st) => ({ id: st.id, name: st.name, x: st.x, y: st.y, tier: st.tier, population: world.residentsOf(st.id).length + Math.round(st.abstractPop) }));
+
+    // People list for the nearest settlement, about once a second.
+    let people: Snapshot['people'] = null;
+    if (performance.now() - this.lastPeopleList > 1000) {
+      this.lastPeopleList = performance.now();
+      const v = this.viewport;
+      const cx = (v.x0 + v.x1) / 2;
+      const cy = (v.y0 + v.y1) / 2;
+      const near = world.state.settlements
+        .filter((st) => !st.abandoned)
+        .sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))[0];
+      people = near
+        ? world.residentsOf(near.id).slice(0, 300).map((n) => ({
+            id: n.id, name: fullName(n), age: Math.floor(ageYears(n)), job: JOBS[n.job]?.name ?? n.job, settlement: near.name,
+          }))
+        : [];
+    }
+
     const v = this.viewport;
     const census = world.census();
     const s = world.state;
@@ -134,6 +198,10 @@ export class ViewTracker {
       chunks,
       dropped,
       animals,
+      npcs,
+      buildings,
+      settlements,
+      people,
       selected: this.describeSelected(world),
       stats: {
         population: census.population,
@@ -142,14 +210,25 @@ export class ViewTracker {
         deaths: { ...s.stats.deaths },
         chunksLoaded: s.chunks.size,
         history: s.stats.history.slice(),
+        peopleHistory: s.stats.peopleHistory.slice(),
+        humans: s.npcs.length + s.settlements.reduce((a, st) => a + st.abstractPop, 0),
+        humanBirths: s.stats.humanBirths,
+        humanDeaths: { ...s.stats.humanDeaths },
       },
-      events: s.events.slice(-8),
+      events: s.events.slice(-40),
     };
   }
 
   private describeSelected(world: World): SelectedInfo | null {
     const sel = this.selected;
     if (!sel) return null;
+    if (sel.kind === 'npc') {
+      const n = world.npcById(sel.id);
+      if (n) return describeNpc(world, n);
+      const dead = world.state.deceased.find((d) => d.id === sel.id);
+      return { kind: 'gone', text: dead ? `${dead.name} died of ${dead.cause}.` : 'This person is gone.' };
+    }
+    if (sel.kind === 'building') return describeBuilding(world, sel.id);
     if (sel.kind === 'animal') {
       const a = world.animalById(sel.id);
       if (!a) return { kind: 'gone', text: 'This animal has died.' };

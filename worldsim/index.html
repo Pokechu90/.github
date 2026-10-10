@@ -13,37 +13,33 @@
         <strong id="date">…</strong>
         <span id="clock">--:--</span>
         <span id="weather"></span>
+        <span id="popcount"></span>
         <span id="lag" class="warn" hidden title="Your computer can't keep up with this speed, so time is running a bit slower.">⚠ slowed</span>
       </div>
       <div id="speeds" class="speeds"></div>
       <div class="world">
+        <span id="actions"></span>
         Seed <code id="seed"></code>
         <button id="new-world" title="Generate a brand new world">New world</button>
       </div>
     </header>
 
     <aside id="panel">
-      <section>
-        <h2>Selected</h2>
-        <div id="selection"></div>
-      </section>
-      <section>
-        <h2>Deer population</h2>
-        <canvas id="history" width="268" height="64"></canvas>
-      </section>
-      <section>
-        <h2>World</h2>
-        <table id="stats"></table>
-      </section>
-      <section>
-        <h2>History</h2>
-        <ul id="events"></ul>
-      </section>
+      <nav id="tabs">
+        <button data-tab="inspect">Inspect</button>
+        <button data-tab="people">People</button>
+        <button data-tab="world">World</button>
+        <button data-tab="history">History</button>
+      </nav>
+      <section id="tab-inspect"></section>
+      <section id="tab-people" hidden></section>
+      <section id="tab-world" hidden></section>
+      <section id="tab-history" hidden></section>
     </aside>
 
     <div id="tooltip" hidden></div>
     <div id="help">
-      Drag / WASD: move · Wheel / + −: zoom · Click: inspect · Space: pause · 1–5: speed
+      Drag / WASD: move · Wheel / + −: zoom · Click: inspect · Esc: deselect · Space: pause · 1–5: speed
     </div>
     <div id="loading">Generating world…</div>
 
