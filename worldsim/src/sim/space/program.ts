@@ -182,7 +182,7 @@ function tryLaunch(world: World, s: Settlement, x: number, y: number, day: numbe
     const target = homePlanets.find((p) => !p.home && p.kind === 'rocky' && sp.explored.includes(p.id) && !busy(p.id) && !sp.missions.some((m) => m.kind === 'crewed' && m.targetPlanet === p.id));
     const crew = world.residentsOf(s.id)
       .filter((n) => isAdult(n) && ageYears(n) < 50)
-      .sort((a, b) => b.skills.research + b.traits.openness - (a.skills.research + a.traits.openness))
+      .sort((a, b) => b.skills.research + b.traits.openness + (b.items.includes('spacesuit') ? 5 : 0) - (a.skills.research + a.traits.openness + (a.items.includes('spacesuit') ? 5 : 0)))
       .slice(0, 3);
     if (target && crew.length === 3) {
       st.metal -= 60;

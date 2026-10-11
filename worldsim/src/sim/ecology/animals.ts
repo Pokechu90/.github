@@ -45,7 +45,7 @@ export function spawnInitialAnimals(world: World, chunk: Chunk, rng: Rng, force 
   }
 }
 
-function makeAnimal(world: World, rng: Rng, x: number, y: number, ageDays: number, motherId: number): Animal {
+export function makeAnimal(world: World, rng: Rng, x: number, y: number, ageDays: number, motherId: number): Animal {
   const sp = ANIMALS[0];
   return {
     id: world.newId(),

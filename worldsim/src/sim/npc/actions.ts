@@ -3,6 +3,7 @@
  * sleeping, talking, and every kind of work. Each job is a little loop:
  * find a target -> walk there -> work -> carry the result home -> repeat.
  */
+import { itemSpeed } from '../gifts';
 import { CHUNK_SIZE, Biome } from '../../shared/terrain';
 import { BUILDINGS, JOBS, RESOURCES } from '../../shared/people';
 import { PLANTS, PlantStage } from '../../shared/species';
@@ -67,7 +68,7 @@ function speed(n: Npc): number {
   if (age > 65) s *= 0.75;
   if (n.illness) s *= 0.7;
   if (n.carrying && n.carrying.amount > 6) s *= 0.85;
-  return s;
+  return s * itemSpeed(n);
 }
 
 /** Moves along the path. Returns true on arrival. */

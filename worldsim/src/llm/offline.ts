@@ -26,7 +26,15 @@ export function offlineReply(req: ChatRequest): ChatResult {
 
   const say = (polite: string, rude: string, quiet?: string) => (grumpy ? rude : shy && quiet ? quiet : polite);
 
-  if (/\b(hi|hello|hey|greetings|good (morning|evening|day))\b/.test(m)) {
+  const gift = n.belongings?.[n.belongings.length - 1];
+  const giftMemory = n.memoriesOfPlayer.find((x) => /stranger/i.test(x) && !/Last words/.test(x));
+  if (/gift|present|like it|enjoy|for you/.test(m) && (gift || giftMemory)) {
+    reply = gift
+      ? say(`The ${gift}? I treasure it. Thank you, truly.`, `The ${gift}... fine. It's useful. Thanks, I suppose.`, `I... I love the ${gift}. Thank you.`)
+      : say(`So it was you! ${giftMemory!.replace(/^[^:]*: /, '')} Thank you.`, `So you're the one behind it. Hm. Thanks.`);
+    emotion = grumpy ? 'neutral' : 'affectionate';
+    affinity = 0.06;
+  } else if (/\b(hi|hello|hey|greetings|good (morning|evening|day))\b/.test(m)) {
     reply = stranger
       ? say(`Oh! Hello, stranger. I'm ${first}. I haven't seen you around ${n.settlement} before.`, `Hm. Who are you? I'm busy.`, `...Hello. I'm ${first}.`)
       : say(`Hello again! Good to see you.`, `You again.`, `Oh... hi.`);

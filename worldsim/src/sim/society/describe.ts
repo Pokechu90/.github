@@ -8,6 +8,7 @@ import { fullName } from '../npc/people';
 import { currentFocus, eraOf, ERAS, TECH_BY_ID } from './tech';
 import { population } from './work';
 import { price } from './economy';
+import { giftOptions } from '../gifts';
 
 export function describeSettlement(world: World, id: number): SelectedInfo {
   const s = world.settlement(id);
@@ -39,5 +40,7 @@ export function describeSettlement(world: World, id: number): SelectedInfo {
       .filter((x) => x.s && !x.s.abandoned)
       .sort((a, b) => b.v - a.v)
       .map(({ s: o, v }) => ({ name: o!.name, id: o!.id, relation: v > 0.4 ? 'allies' : v > 0.1 ? 'friendly' : v > -0.2 ? 'neutral' : v > -0.5 ? 'tense' : 'hostile' })),
+    era: ERAS[eraOf(s)],
+    gifts: giftOptions(world, { kind: 'settlement', id: s.id }),
   };
 }

@@ -37,6 +37,8 @@ export type ToSim =
   | { type: 'load'; data: string }
   /** Ask for the state of space exploration (for the star map). */
   | { type: 'spaceState'; requestId: number }
+  /** Give a gift (see sim/gifts.ts) to a town or a person. */
+  | { type: 'gift'; gift: string; target: SelectTarget }
 
 // ---------- Simulation -> Page ----------
 
@@ -49,7 +51,22 @@ export type FromSim =
   | { type: 'spaceState'; requestId: number; data: SpaceViewData }
   /** Minimap data: newly explored chunks (4x4 biome samples each) and all towns. */
   | { type: 'overview'; chunks: { cx: number; cy: number; cells: number[] }[]; reset: boolean }
+  | { type: 'giftResult'; ok: boolean; text: string }
   | { type: 'error'; message: string };
+
+/** A gift the player could send to the selected town or person. */
+export interface GiftOption {
+  id: string;
+  icon: string;
+  name: string;
+  description: string;
+  cost: number;
+  /** Era the gift belongs to. */
+  era: string;
+  /** Why it can't be given (missing technology, already owned...), or null. */
+  locked: string | null;
+  affordable: boolean;
+}
 
 export interface ChunkTerrainView {
   biomes: Uint8Array;
@@ -210,6 +227,8 @@ export type SelectedInfo =
       relationships: { name: string; id: number; affinity: number; label: string }[];
       memories: { text: string; when: string; source: string | null; lasting: boolean }[];
       playerAffinity: number;
+      items: { icon: string; name: string; description: string }[];
+      gifts: GiftOption[];
     }
   | {
       kind: 'building';
@@ -239,6 +258,8 @@ export type SelectedInfo =
       treasury: number | null;
       buildings: string[];
       neighbours: { name: string; id: number; relation: string }[];
+      era: string;
+      gifts: GiftOption[];
     }
   | { kind: 'gone'; text: string };
 
@@ -259,6 +280,9 @@ export interface WorldStats {
   era: string;
   /** Exploration beyond the planet (milestone 6). */
   space: { planetsKnown: number; colonies: number } | null;
+  /** Player influence for gifts (0..max). */
+  influence: number;
+  influenceMax: number;
 }
 
 export interface WorldEvent {

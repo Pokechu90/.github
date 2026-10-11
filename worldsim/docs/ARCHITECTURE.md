@@ -153,6 +153,9 @@ when the log fills up.
    missions, interstellar probes, colony ships, colonies that spread, star map with system
    and surface views. (`shared/galaxy.ts`, `sim/space/*`, `ui/starmap.ts`, `ui/surface.ts`)
 
+7. ✅ **Gifts.** Player influence, era-dependent gifts for towns and people, personal
+   items with real effects, heirlooms. (`sim/gifts.ts`)
+
 ### Where things live
 
 ```
@@ -163,6 +166,7 @@ src/sim/society/   settlement.ts, work.ts (farming, crafting, planning, tiers),
                    tech.ts, economy.ts, governance.ts, migration.ts
 src/sim/space/     program.ts (missions, colonies)
 src/sim/tiers.ts   level-of-detail simulation
+src/sim/gifts.ts   the player's influence, gifts and belongings
 src/llm/           browser side of the LLM (queue, limits, offline replies, thinking loop)
 server/            Node brain server (providers.ts, index.ts)
 ```

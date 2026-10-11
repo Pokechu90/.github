@@ -121,7 +121,8 @@ dialog#settings input[type=range] { width: 100%; }
 dialog#saves { background: #161b22; color: var(--text); border: 1px solid var(--border); border-radius: 12px; width: min(460px, 92vw); }
 dialog#saves::backdrop { background: rgba(0,0,0,0.5); }
 .save-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 6px 0; }
-.toast { position: fixed; top: 64px; left: 50%; transform: translateX(-50%); background: var(--bg); border: 1px solid var(--accent); padding: 8px 12px; border-radius: 10px; z-index: 10; }
+#toasts { position: fixed; top: 92px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; z-index: 10; pointer-events: none; width: min(520px, calc(100vw - 32px)); }
+.toast { background: #10151dee; border: 1px solid var(--accent); padding: 8px 12px; border-radius: 10px; text-align: center; }
 table.stock { width: 100%; border-collapse: collapse; } table.stock td:nth-child(2), table.stock td:nth-child(3) { text-align: right; }
 [hidden] { display: none !important; }
 #minimap { position: fixed; left: 8px; bottom: 40px; width: 200px; height: 160px; border: 1px solid var(--border); border-radius: 8px; cursor: crosshair; background: #0b1020; }
@@ -142,3 +143,19 @@ table.stock { width: 100%; border-collapse: collapse; } table.stock td:nth-child
 #sm-info a, #sm-info ul { color: var(--text); }
 #sm-help { grid-column: 1 / 3; padding: 4px 14px; font-size: 12px; }
 @media (max-width: 760px) { #starmap { grid-template-columns: 1fr; grid-template-rows: auto 1fr 40vh auto; } #sm-info { border-left: 0; } }
+
+/* Gifts */
+#influence { color: var(--accent); font-variant-numeric: tabular-nums; }
+.gifts { border: 1px solid #f0c67444; background: #f0c6740d; border-radius: 10px; padding: 6px 8px 8px; margin: 4px 0 8px; }
+.gifts > p { margin: 2px 0 4px; font-size: 11px; }
+.gifts h5 { margin: 8px 0 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.gift-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 4px; }
+.gift { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: 2px 5px; text-align: left; padding: 4px 6px; font-size: 11px; min-width: 0; }
+.gift .gi { font-size: 15px; grid-row: span 2; align-self: center; }
+.gift .gn { overflow-wrap: anywhere; line-height: 1.2; }
+.gift .gc { color: var(--accent); font-variant-numeric: tabular-nums; }
+.gift .gw { grid-column: 2 / 4; font-size: 10px; color: var(--muted); white-space: normal; line-height: 1.2; }
+.gift.off { opacity: 0.55; cursor: not-allowed; }
+.gift:not(.off):hover { border-color: var(--accent); }
+ul.items { padding-left: 0; list-style: none; margin: 4px 0; }
+ul.items li { margin: 2px 0; }

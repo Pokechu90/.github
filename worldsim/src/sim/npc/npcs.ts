@@ -2,6 +2,7 @@
  * Runs everyone, every tick: needs rise, health changes, actions progress,
  * and people who finish an action (or are in urgent need) decide again.
  */
+import { itemLoneliness } from '../gifts';
 import { isNight } from '../../shared/time';
 import { randInt, randRange } from '../../shared/rng';
 import type { Npc } from '../state';
@@ -71,7 +72,7 @@ function updateNeeds(world: World, n: Npc, dt: number, night: boolean): void {
 
   nd.hunger = Math.min(1, nd.hunger + day / 1.5 * (n.pregnantDays >= 0 ? 1.2 : 1));
   if (a !== 'sleep') nd.energy = Math.min(1, nd.energy + (dt / (16 * 60)) * ill * (age > 65 ? 1.2 : 1) * (age < 8 ? 1.2 : 1));
-  if (a !== 'talk') nd.social = Math.min(1, nd.social + day / 1.5 * (0.4 + n.traits.extraversion));
+  if (a !== 'talk') nd.social = Math.min(1, nd.social + day / 1.5 * (0.4 + n.traits.extraversion) * itemLoneliness(n));
   if (a !== 'work' && a !== 'learn' && a !== 'play') {
     nd.purpose = Math.min(1, nd.purpose + day / 1.2 * (0.5 + n.traits.conscientiousness) * (age >= 13 ? 1 : 0.3));
   }

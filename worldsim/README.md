@@ -90,6 +90,7 @@ game's address. Players then enter the server address in the 🧠 settings.
 | Esc | Deselect / stop following |
 | Space · 1–5 | Pause · speeds 1×, 10×, 60×, 1 year/min, 10 years/min |
 | 💬 Talk (person panel) | Chat with them. Type anything; they answer in character |
+| 🎁 Give… / Send a gift… | Spend ✨ influence on a gift for that person or town (see below) |
 | 📍 Follow / 🎯 Find | Camera follows a person / jumps to them |
 | Minimap (bottom left) | Click to jump, scroll to zoom |
 | 🪐 Space | Star map → solar systems → planet surfaces |
@@ -134,6 +135,27 @@ trade and migration. There are prices from supply and demand, wages, traders,
 leaders chosen by respect, laws shaped by the leader's personality, culture,
 crime, diplomacy and raids. Crowded or hungry towns send groups off to found new
 villages; newcomers arrive from beyond the map.
+
+**Gifts.** You build up ✨ influence while the world runs (about 15 a minute, up to
+100) and spend it on gifts. What's on offer depends on the town's era, and the
+next era's gifts are shown locked so you can see what's coming:
+
+| Era | For a town | For a person |
+|---|---|---|
+| Stone Age | feast, deer herd, healing, timber & stone, festival, builders' blessing, inspiration | healing, long life, talent, joy, a child, warm furs, spear |
+| Neolithic | bountiful harvest | plough |
+| Ancient | scroll of knowledge (learn the next technology now), chest of gold, peace with all neighbours | purse of coins, book, herbal remedies |
+| Classical | tools & metal, star charts | telescope |
+| Industrial | vaccines, a factory | bicycle, first-aid kit |
+| Electric | a power plant | radio, motor car |
+| Information | a laboratory, a launch pad | computer, mobile phone |
+| Space | rocket parts | spacesuit |
+
+Gifts really change the simulation: furs keep people healthy in winter, vehicles make
+them faster, radios and phones keep loneliness away, spacesuits put them first in line
+for crewed missions. People remember who gave them what (and mention it when you talk
+to them), treasure their belongings and leave them to their children as heirlooms.
+A town that receives five gifts comes to *revere the Stranger*.
 
 **Space.** Astronomy charts the planets; rockets send probes, then crews, then
 interstellar probes and colony ships. Stars and planets are generated from the seed

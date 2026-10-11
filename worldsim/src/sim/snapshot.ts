@@ -5,6 +5,7 @@
  * camera. Terrain is sent once per chunk, plants only when they visibly
  * change, and animals (which move) every snapshot.
  */
+import { MAX_INFLUENCE } from './gifts';
 import { CHUNK_SIZE, chunkKey } from '../shared/terrain';
 import { ANIMALS, PLANTS, PLANT_STAGE_NAMES } from '../shared/species';
 import { DAYS_PER_YEAR } from '../shared/time';
@@ -247,6 +248,8 @@ export class ViewTracker {
         humanDeaths: { ...s.stats.humanDeaths },
         era: ERAS[s.settlements.reduce((m, st) => (st.abandoned ? m : Math.max(m, eraOf(st))), 0)],
         space: world.hooks.spaceStats?.(world) ?? null,
+        influence: Math.floor(s.player.influence),
+        influenceMax: MAX_INFLUENCE,
       },
       events: s.events.slice(-40),
       chronicle: this.takeChronicle(world),

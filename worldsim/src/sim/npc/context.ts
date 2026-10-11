@@ -3,6 +3,7 @@
  * a prompt context, and applies what comes back (conversation results and
  * LLM-chosen goals) to the NPC's memory, feelings and plans.
  */
+import { ITEM_BY_ID } from '../gifts';
 import { DISEASES, JOBS, traitWord } from '../../shared/people';
 import { daylight, formatDate, getCalendar } from '../../shared/time';
 import type { ChatResult, DecideResult, NpcPromptContext } from '../../shared/llm';
@@ -79,6 +80,7 @@ export function buildContext(world: World, n: Npc, withGoals = false): NpcPrompt
     values: Object.entries(n.values).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k]) => k),
     mood: n.mood > 0.5 ? 'very happy' : n.mood > 0.15 ? 'content' : n.mood > -0.15 ? 'so-so' : n.mood > -0.5 ? 'unhappy' : 'miserable',
     feelings,
+    belongings: n.items.map((id) => ITEM_BY_ID.get(id)?.name.toLowerCase() ?? id),
     health: n.illness ? `sick with ${DISEASES[n.illness.disease].name.toLowerCase()}` : n.health < 0.5 ? 'weak' : 'healthy',
     doing: describeDoing(world, n),
     thought: n.thought,

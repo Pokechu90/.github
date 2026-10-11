@@ -21,6 +21,8 @@ export interface NpcPromptContext {
   mood: string;
   feelings: string[];
   health: string;
+  /** Things they own (gifts from the stranger, heirlooms). */
+  belongings?: string[];
   doing: string;
   thought: string;
   goal: string | null;
@@ -127,6 +129,7 @@ export function describeContext(c: NpcPromptContext): string {
     `Personality: ${c.personality.join(', ') || 'balanced'}. Big Five (0-1): ${Object.entries(c.traitNumbers).map(([k, v]) => `${k} ${v.toFixed(2)}`).join(', ')}.`,
     `Cares most about: ${c.values.join(', ')}.`,
     `Mood: ${c.mood}. Feeling: ${c.feelings.join(', ') || 'fine'}. Health: ${c.health}.`,
+    ...(c.belongings?.length ? [`Treasured belongings: ${c.belongings.join(', ')}.`] : []),
     `Right now: ${c.doing}. Inner thought: "${c.thought}"${c.goal ? ` Current goal: ${c.goal}.` : ''}`,
     `Family: ${c.family.join('; ') || 'none'}.`,
     `Relationships: ${c.relationships.join('; ') || 'none to speak of'}.`,

@@ -14,6 +14,7 @@ import { deserialize, serialize } from './save';
 import { updateTiers } from './tiers';
 import { spaceView } from './space/program';
 import { applySandbox } from './sandbox';
+import { gainInfluence, giveGift } from './gifts';
 import { MINUTES_PER_YEAR, getCalendar } from '../shared/time';
 
 const LOOP_MS = 50;
@@ -107,6 +108,13 @@ ctx.onmessage = (e) => {
         ctx.postMessage({ type: 'error', message: err instanceof Error ? err.message : String(err) });
       }
       break;
+    case 'gift': {
+      if (!world) break;
+      const r = giveGift(world, msg.gift, msg.target);
+      ctx.postMessage({ type: 'giftResult', ...r });
+      lastSnapshot = 0;
+      break;
+    }
     case 'applyGoal': {
       const n = world?.npcById(msg.id);
       if (n && world) applyGoal(world, n, msg.result);
@@ -142,6 +150,7 @@ setInterval(() => {
   view.generateVisible(world, 12);
 
   if (speed > 0) {
+    gainInfluence(world, realDt);
     const wanted = speed * realDt;
     const t0 = performance.now();
     const done = world.advance(wanted, SIM_BUDGET_MS);

@@ -7,7 +7,7 @@
  */
 import { BIOMES, type Biome } from '../shared/terrain';
 import { MINUTES_PER_YEAR, formatClock, formatDate } from '../shared/time';
-import type { SelectTarget, SelectedInfo, Snapshot, WeatherView, WorldEvent } from '../shared/protocol';
+import type { GiftOption, SelectTarget, SelectedInfo, Snapshot, WeatherView, WorldEvent } from '../shared/protocol';
 import type { TileInfo } from '../render/renderer';
 
 export const SPEEDS = [
@@ -25,13 +25,14 @@ export interface HudCallbacks {
   onSelect(target: SelectTarget | null, focus: boolean): void;
   onFollow(id: number | null): void;
   onTalk(id: number): void;
+  onGift(gift: string, target: SelectTarget): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const EVENT_ICONS: Record<string, string> = {
   birth: '👶', death: '🕯️', social: '💞', build: '🏠', disease: '🦠', settlement: '🏕️', world: '🌍',
-  nature: '🦌', tech: '💡', economy: '💰', conflict: '⚔️', migration: '🧭', space: '🚀', law: '📜',
+  nature: '🦌', tech: '💡', economy: '💰', conflict: '⚔️', migration: '🧭', space: '🚀', law: '📜', gift: '🎁',
 };
 
 export class Hud {
@@ -44,6 +45,10 @@ export class Hud {
   private people: Snapshot['people'] = [];
   private chronicle: WorldEvent[] = [];
   private historyFilter = 'all';
+  /** Whether the gift list is open in the Inspect tab. */
+  private giftsOpen = false;
+  /** Mouse button held down inside the panel: don't redraw under the cursor or the click is lost. */
+  private pressing = false;
   /** Extra buttons in the top bar (save, settings, star map...) */
   readonly actions: HTMLElement;
 
@@ -68,6 +73,9 @@ export class Hud {
     }
     this.showTab('inspect');
 
+    $('panel').addEventListener('pointerdown', () => (this.pressing = true));
+    window.addEventListener('pointerup', () => setTimeout(() => (this.pressing = false), 0));
+
     // Delegated clicks inside the panel.
     $('panel').addEventListener('click', (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('[data-npc],[data-action],[data-town]');
@@ -90,6 +98,12 @@ export class Hud {
         cb.onTalk(id);
       } else if (action === 'focus') {
         cb.onSelect({ kind: 'npc', id }, true);
+      } else if (action === 'gifts') {
+        this.giftsOpen = !this.giftsOpen;
+        this.redraw();
+      } else if (action === 'gift' && !(el as HTMLButtonElement).disabled) {
+        const kind = el.dataset.target === 'settlement' ? 'settlement' : 'npc';
+        cb.onGift(el.dataset.gift!, { kind, id });
       }
     });
 
@@ -141,13 +155,14 @@ export class Hud {
     $('weather').textContent = `${describeWeather(s.weather)} · ${Math.round(s.weather.tempC)}°C`;
     $('lag').hidden = !s.lagging;
     $('popcount').textContent = `👥 ${Math.round(s.stats.humans)} · 🏘 ${s.settlements.length} · 💡 ${s.stats.era}${s.stats.space ? ` · 🪐 ${s.stats.space.planetsKnown}` : ''}`;
+    $('influence').textContent = `✨ ${s.stats.influence}`;
     // The panel is redrawn a few times a second, not on every snapshot.
     if (performance.now() - this.lastPanelDraw > 250) this.redraw();
   }
 
   redraw(): void {
     const s = this.lastSnap;
-    if (!s) return;
+    if (!s || this.pressing) return;
     this.lastPanelDraw = performance.now();
     if (this.tab === 'inspect') this.renderSelection(s.selected);
     else if (this.tab === 'people') this.renderPeople();
@@ -181,11 +196,11 @@ export class Hud {
       return;
     }
     if (sel.kind === 'npc') {
-      el.innerHTML = this.npcHtml(sel);
+      setHtml(el, this.npcHtml(sel));
       return;
     }
     if (sel.kind === 'settlement') {
-      el.innerHTML = this.townHtml(sel);
+      setHtml(el, this.townHtml(sel));
       return;
     }
     if (sel.kind === 'building') {
@@ -224,7 +239,9 @@ export class Hud {
         <button data-action="talk" data-id="${n.id}">💬 Talk</button>
         <button data-action="follow" data-id="${n.id}" class="${following ? 'active' : ''}">${following ? '📍 Following' : '📍 Follow'}</button>
         <button data-action="focus" data-id="${n.id}">🎯 Find</button>
+        <button data-action="gifts" class="${this.giftsOpen ? 'active' : ''}">🎁 Give…</button>
       </div>
+      ${this.giftsHtml(n.gifts, 'npc', n.id, 'their')}
       <p class="thought">💭 “${esc(n.thought)}”</p>
       <p>Doing: <b>${esc(n.doing)}</b></p>
       ${n.goal ? `<p>Goal: <b>${esc(n.goal)}</b></p>` : ''}
@@ -232,6 +249,7 @@ export class Hud {
       ${n.needs.map((x) => bar(x.label, x.value, false)).join('')}
       ${bar('Health', n.health, true)}
       ${n.conditions.length ? `<ul>${n.conditions.map((c) => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+      ${n.items.length ? `<h4>Belongings</h4><ul class="items">${n.items.map((i) => `<li title="${esc(i.description)}">${i.icon} ${esc(i.name)} <span class="muted">· ${esc(i.description)}</span></li>`).join('')}</ul>` : ''}
       <h4>Personality</h4>
       <p>${n.traits.length ? n.traits.join(', ') : 'balanced'} · values ${n.values.join(' & ')}</p>
       ${n.skills.map((s) => bar(s.label, s.value, true)).join('')}
@@ -247,6 +265,8 @@ export class Hud {
     return `
       <h3>${esc(t.title)}</h3>
       <p class="muted">${esc(t.subtitle)}</p>
+      <div class="buttons"><button data-action="gifts" class="${this.giftsOpen ? 'active' : ''}">🎁 Send a gift…</button></div>
+      ${this.giftsHtml(t.gifts, 'settlement', t.id, "the town's")}
       <p>Leader: ${t.leader ? `<a data-npc="${t.leader.id}">${esc(t.leader.name)}</a>` : '<span class="muted">none</span>'}</p>
       <p>Culture: ${esc(t.culture)}</p>
       <h4>Laws</h4>${t.laws.length ? `<ul>${t.laws.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p class="muted">No written laws.</p>'}
@@ -255,6 +275,23 @@ export class Hud {
       <table class="stock">${t.stock.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.amount}</td>${r.price !== null ? `<td class="muted">${r.price.toFixed(1)}c</td>` : ''}</tr>`).join('')}</table>
       <h4>Buildings</h4><p>${t.buildings.join(', ')}</p>
       ${t.neighbours.length ? `<h4>Neighbours</h4><ul class="links">${t.neighbours.map((n) => `<li><a data-town="${n.id}">${esc(n.name)}</a> <span class="tag ${n.relation === 'hostile' || n.relation === 'tense' ? 'bad' : 'good'}">${n.relation}</span></li>`).join('')}</ul>` : ''}`;
+  }
+
+  /** The gift list: this era's gifts, plus a peek at the next era's (locked). */
+  private giftsHtml(gifts: GiftOption[], target: 'npc' | 'settlement', id: number, whose: string): string {
+    if (!this.giftsOpen) return '';
+    const influence = this.lastSnap?.stats.influence ?? 0;
+    const eras = [...new Set(gifts.map((g) => g.era))];
+    const button = (g: GiftOption) => {
+      const can = !g.locked && g.affordable;
+      const why = g.locked ?? (g.affordable ? '' : `Needs ${g.cost} influence`);
+      return `<button class="gift${can ? '' : ' off'}" data-action="gift" data-gift="${g.id}" data-target="${target}" data-id="${id}" ${can ? '' : 'disabled'}
+        title="${esc(g.description + (why ? ` — ${why}` : ''))}"><span class="gi">${g.icon}</span><span class="gn">${esc(g.name)}</span><span class="gc">✨${g.cost}</span>${why ? `<span class="gw">${esc(why)}</span>` : ''}</button>`;
+    };
+    return `<div class="gifts">
+      <p class="muted">You have ✨ ${influence} influence (it slowly builds up while the world runs). What you can give depends on ${whose} era.</p>
+      ${eras.map((e) => `<h5>${esc(e)}</h5><div class="gift-grid">${gifts.filter((g) => g.era === e).map(button).join('')}</div>`).join('')}
+    </div>`;
   }
 
   // ------------------------------------------------------------- other tabs
@@ -303,7 +340,7 @@ export class Hud {
   private renderHistory(events: WorldEvent[]): void {
     const filters: [string, string, string[]][] = [
       ['all', 'All', []], ['people', 'People', ['birth', 'death', 'social']], ['society', 'Society', ['settlement', 'migration', 'law', 'build', 'economy']],
-      ['tech', 'Discoveries', ['tech', 'space']], ['conflict', 'Conflict', ['conflict']], ['disease', 'Disease', ['disease']],
+      ['tech', 'Discoveries', ['tech', 'space']], ['conflict', 'Conflict', ['conflict']], ['disease', 'Disease', ['disease']], ['gift', 'Gifts', ['gift']],
     ];
     const kinds = filters.find((f) => f[0] === this.historyFilter)?.[2] ?? [];
     const match = (e: WorldEvent) => !kinds.length || kinds.includes(e.kind);
@@ -369,6 +406,28 @@ function drawHistory(canvas: HTMLCanvasElement, data: number[], color: string): 
   g.fillStyle = '#9aa4b2';
   g.font = '10px sans-serif';
   g.fillText(`max ${max} · now ${data[data.length - 1]}`, 4, 10);
+}
+
+/** Replaces an element's HTML only when it changed. */
+function setHtml(el: HTMLElement, html: string): void {
+  if ((el as HTMLElement & { _html?: string })._html === html) return;
+  (el as HTMLElement & { _html?: string })._html = html;
+  el.innerHTML = html;
+}
+
+/** A short message near the top of the screen (several stack up). */
+export function showToast(text: string, ms = 4000): void {
+  let box = document.getElementById('toasts');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'toasts';
+    document.body.appendChild(box);
+  }
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = text;
+  box.appendChild(toast);
+  setTimeout(() => toast.remove(), ms);
 }
 
 export function isTyping(): boolean {

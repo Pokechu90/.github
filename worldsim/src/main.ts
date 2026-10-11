@@ -6,7 +6,7 @@ import './style.css';
 import { SimClient } from './bridge/simClient';
 import { PixiRenderer } from './render/pixi/PixiRenderer';
 import { attachInput } from './render/input';
-import { Hud } from './ui/hud';
+import { showToast, Hud } from './ui/hud';
 import { seedFromString } from './shared/rng';
 import { BrainClient } from './llm/brainClient';
 import { startThinking } from './llm/thinking';
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
     },
     onFollow: (id) => (renderer.follow = id),
     onTalk: (id) => void chat.open(id),
+    onGift: (gift, target) => sim.send({ type: 'gift', gift, target }),
   });
   const minimap = new Minimap(renderer.camera);
   sim.on('overview', ({ chunks, reset }) => {
@@ -58,13 +59,8 @@ async function main(): Promise<void> {
     renderer.reset();
     chat.close();
   });
-  sim.on('error', ({ message }) => {
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = `Could not load that world: ${message}`;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 8000);
-  });
+  sim.on('error', ({ message }) => showToast(`Could not load that world: ${message}`, 8000));
+  sim.on('giftResult', ({ ok, text }) => showToast(ok ? `🎁 ${text}` : `Couldn't give that: ${text}`, 4000));
   startThinking(sim, brain, () => hud.paused);
 
   attachInput(renderer.view, renderer.camera, {

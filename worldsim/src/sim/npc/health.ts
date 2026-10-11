@@ -65,6 +65,7 @@ export function updateHealthDaily(world: World): void {
     else if (age > 60) risk *= 1 + (age - 60) / 8;
     if (n.needs.hunger > 0.7) risk *= 2;
     risk *= 1 - medicineLevel(world, n) * 0.6;
+    if (n.items.includes('medkit')) risk *= 0.4;
     if (chance(rng, risk)) {
       killNpc(world, n, d.name.toLowerCase());
       continue;
@@ -87,6 +88,7 @@ function susceptibility(world: World, n: Npc, winter: boolean): number {
   if (n.needs.hunger > 0.6) f *= 1.7;
   if (winter) f *= (world.settlement(n.settlementId)?.stock.cloth ?? 0) > 1 ? 1.15 : 1.5;
   if (n.homeId < 0) f *= 1.3;
+  if (winter && n.items.includes('furs')) f *= 0.6;
   return f;
 }
 

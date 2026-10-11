@@ -8,6 +8,7 @@ import type { Npc, SkillKey, ValueKey } from '../state';
 import type { World } from '../world';
 import { ageYears, fullName, siblings, TRAITS } from './people';
 import { homeResidents } from '../society/settlement';
+import { giftOptions, ITEM_BY_ID } from '../gifts';
 
 const ACTION_WORDS: Record<string, string> = {
   idle: 'idling', walk: 'walking', sleep: 'sleeping', eat: 'eating', work: 'working', talk: 'talking',
@@ -94,6 +95,8 @@ export function describeNpc(world: World, n: Npc): SelectedInfo {
         lasting,
       })),
     playerAffinity: n.playerAffinity,
+    items: n.items.map((id) => ITEM_BY_ID.get(id)).filter((i) => !!i).map((i) => ({ icon: i!.icon, name: i!.name, description: i!.description })),
+    gifts: giftOptions(world, { kind: 'npc', id: n.id }),
   };
 }
 

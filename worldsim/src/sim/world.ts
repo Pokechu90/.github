@@ -20,6 +20,7 @@ import { updateRomanceDaily } from './npc/social';
 import { assignJobs, updateLifeDaily } from './npc/life';
 import { totalFood, updateSettlementDaily } from './society/settlement';
 import { installCivilization } from './society';
+import { emptyPlayer, passOnItems } from './gifts';
 import { emptySpace, spaceDaily, spaceStats } from './space/program';
 import { abstractPopulationDaily, chunkIsNear, distantSettlementDaily, updateTiers } from './tiers';
 import { BUILDINGS } from '../shared/people';
@@ -42,6 +43,8 @@ export interface WorldHooks {
   techName?: (id: string) => string;
   spaceStats?: (world: World) => { planetsKnown: number; colonies: number } | null;
   onTech?: Array<(world: World, s: Settlement, techId: string) => void>;
+  /** Someone died (not emigrated): e.g. pass their belongings on. */
+  onDeath?: (world: World, n: Npc) => void;
   onPractice?: (world: World, n: Npc, skill: SkillKey, hours: number) => void;
   onProduced?: (world: World, n: Npc, resource: ResourceType, amount: number) => void;
   tryTradeTask?: (world: World, n: Npc, task: string) => boolean;
@@ -55,7 +58,7 @@ export interface WorldHooks {
 const HISTORY_DAYS = 360;
 const MAX_EVENTS = 600;
 /** Kinds of events worth keeping in the long-term chronicle. */
-const CHRONICLE_KINDS = new Set(['tech', 'settlement', 'conflict', 'migration', 'law', 'space', 'world']);
+const CHRONICLE_KINDS = new Set(['tech', 'settlement', 'conflict', 'migration', 'law', 'space', 'world', 'gift']);
 
 export class World {
   readonly state: WorldState;
@@ -90,7 +93,7 @@ export class World {
   readonly lastLlmDecision = new Map<number, number>();
   /** Bumped whenever buildings change, so the renderer knows to update. */
   buildingsVersion = 0;
-  readonly hooks: WorldHooks = { daily: [], tick: [], onTech: [] };
+  readonly hooks: WorldHooks = { daily: [], tick: [], onTech: [], onDeath: passOnItems };
 
   constructor(seed: number) {
     this.terrain = new TerrainGenerator(seed);
@@ -112,6 +115,7 @@ export class World {
       events: [],
       chronicle: [],
       space: emptySpace(),
+      player: emptyPlayer(),
     };
     this.log(`The world was born from seed ${seed}.`, 'world');
     installCivilization(this);

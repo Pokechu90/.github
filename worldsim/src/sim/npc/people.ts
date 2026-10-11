@@ -111,6 +111,7 @@ export function createNpc(world: World, o: NewNpcOptions): Npc {
     playerAffinity: 0,
     playerFamiliarity: 0,
     chatLog: [],
+    items: [],
     wealth: 0,
   };
 
@@ -202,6 +203,7 @@ export function killNpc(world: World, npc: Npc, cause: string, departed?: string
   const eventId = world.newId();
   const settlement = world.settlement(npc.settlementId);
   if (!departed) {
+    world.hooks.onDeath?.(world, npc);
     s.stats.humanDeaths[cause] = (s.stats.humanDeaths[cause] ?? 0) + 1;
     world.log(`${fullName(npc)} died of ${cause} at age ${age}${settlement ? ` in ${settlement.name}` : ''}.`, 'death', npc.id);
   }

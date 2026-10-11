@@ -10,6 +10,7 @@ import type { Rng } from '../shared/rng';
 import type { WorldEvent } from '../shared/protocol';
 import type { PlantStage } from '../shared/species';
 import type { SpaceState } from './space/program';
+import type { PlayerState } from './gifts';
 
 export interface Plant {
   id: number;
@@ -189,6 +190,8 @@ export interface Npc {
   wealth: number;
   /** The last few lines exchanged with the player, so later chats continue naturally. */
   chatLog: { from: 'player' | 'npc'; text: string; time: number }[];
+  /** Belongings given by the player (or inherited): item ids. */
+  items: string[];
 }
 
 /** A person who has died: kept for family trees and history. */
@@ -259,6 +262,8 @@ export interface Settlement {
   lastMigrationDay: number;
   lastRaidDay: number;
   raids: number;
+  /** How many gifts the player has sent here. */
+  giftsReceived?: number;
 }
 
 export interface WorldState {
@@ -291,4 +296,6 @@ export interface WorldState {
   chronicle: WorldEvent[];
   /** Astronomy, space missions and colonies on other worlds. */
   space: SpaceState;
+  /** The player's influence, spent on gifts. */
+  player: PlayerState;
 }
