@@ -9,6 +9,8 @@ import { currentFocus, eraOf, ERAS, TECH_BY_ID } from './tech';
 import { population } from './work';
 import { price } from './economy';
 import { giftOptions } from '../gifts';
+import { SCHEME_COST, atWar, describeWarFor, inciteBlocked, inciteCost, realmMembers, realmName, realmRoot, warsOf, weaponsOf } from './war';
+import type { Settlement } from '../state';
 
 export function describeSettlement(world: World, id: number): SelectedInfo {
   const s = world.settlement(id);
@@ -42,5 +44,38 @@ export function describeSettlement(world: World, id: number): SelectedInfo {
       .map(({ s: o, v }) => ({ name: o!.name, id: o!.id, relation: v > 0.4 ? 'allies' : v > 0.1 ? 'friendly' : v > -0.2 ? 'neutral' : v > -0.5 ? 'tense' : 'hostile' })),
     era: ERAS[eraOf(s)],
     gifts: giftOptions(world, { kind: 'settlement', id: s.id }),
+    ...politics(world, s),
+  };
+}
+
+const relationWord = (v: number) => (v > 0.4 ? 'allies' : v > 0.1 ? 'friendly' : v > -0.2 ? 'neutral' : v > -0.5 ? 'tense' : 'hostile');
+
+/** Realm, wars and the player's options for meddling. */
+function politics(world: World, s: Settlement) {
+  const day = Math.floor(world.state.time / 1440);
+  const root = realmRoot(world, s);
+  const rname = realmName(world, root);
+  const wars = warsOf(world, s)
+    .sort((a, b) => (a.endDay < 0 ? -1 : 0) - (b.endDay < 0 ? -1 : 0) || b.startDay - a.startDay)
+    .filter((w, i) => w.endDay < 0 || i < 4)
+    .map((w) => describeWarFor(world, w, s));
+  const rivals = world.state.settlements
+    .filter((o) => o !== s && !o.abandoned)
+    .map((o) => ({ o, d: Math.hypot(o.x - s.x, o.y - s.y) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 8)
+    .map(({ o, d }) => ({
+      id: o.id, name: o.name, relation: relationWord(s.diplomacy[o.id] ?? 0), distance: Math.round(d),
+      blocked: inciteBlocked(world, s, o), warCost: inciteCost(world, s, o), atWar: !!atWar(world, s, o),
+    }));
+  const lord = s.tribute ? world.settlement(s.tribute.toId) : undefined;
+  return {
+    realm: rname ? { name: rname, rootId: root.id, rootName: root.name, members: realmMembers(world, root).length, vassal: root !== s } : null,
+    wars,
+    rivals,
+    weapons: weaponsOf(s),
+    armedDays: Math.max(0, (s.armedUntil ?? -1) - day),
+    tribute: lord && s.tribute ? `Pays tribute to ${lord.name} for ${Math.ceil((s.tribute.until - day) / 12) / 10} more years.` : null,
+    schemeCosts: SCHEME_COST,
   };
 }

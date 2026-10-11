@@ -95,6 +95,8 @@ export class PixiRenderer implements WorldRenderer {
   private people = new Map<number, PersonGfx>();
   private buildings = new Map<number, BuildingGfx>();
   private townLabels = new Map<number, Text>();
+  /** Front lines and battles of ongoing wars (screen space, redrawn every frame). */
+  private warLayer = new Graphics();
   private time = 0;
   private rockets: { sprite: Sprite; flame: Sprite; t: number; x: number; y: number }[] = [];
   private launchesSeen = new Set<string>();
@@ -179,6 +181,39 @@ export class PixiRenderer implements WorldRenderer {
     this.syncPeople(snap.npcs);
     if (snap.buildings) this.syncBuildings(snap.buildings);
     this.syncTownLabels(snap);
+  }
+
+  /** Dashed red lines between warring towns, a marker where the front is, and flashes at recent battles. */
+  private drawWars(): void {
+    const g = this.warLayer;
+    g.clear();
+    const wars = this.snap?.wars ?? [];
+    if (!wars.length) return;
+    if (!g.parent) this.labelLayer.addChildAt(g, 0);
+    const cam = this.camera;
+    const sx = (x: number) => (x - cam.x) * cam.zoom + cam.width / 2;
+    const sy = (y: number) => (y - cam.y) * cam.zoom + cam.height / 2;
+    for (const w of wars) {
+      const ax = sx(w.ax), ay = sy(w.ay), bx = sx(w.bx), by = sy(w.by);
+      const len = Math.hypot(bx - ax, by - ay);
+      const steps = Math.max(1, Math.floor(len / 14));
+      for (let i = 0; i < steps; i += 2) {
+        const t0 = i / steps, t1 = Math.min(1, (i + 1) / steps);
+        g.moveTo(ax + (bx - ax) * t0, ay + (by - ay) * t0).lineTo(ax + (bx - ax) * t1, ay + (by - ay) * t1);
+      }
+      g.stroke({ width: 2, color: 0xe5484d, alpha: 0.75 });
+      // The front sits between the towns, pushed towards whoever is losing.
+      const t = 0.5 - w.score * 0.35;
+      const fx = ax + (bx - ax) * t, fy = ay + (by - ay) * t;
+      g.circle(fx, fy, 9).fill({ color: 0x2a0d10, alpha: 0.85 }).stroke({ width: 2, color: 0xe5484d });
+      g.moveTo(fx - 4, fy - 4).lineTo(fx + 4, fy + 4).moveTo(fx + 4, fy - 4).lineTo(fx - 4, fy + 4).stroke({ width: 2, color: 0xffd0d0 });
+      if (w.battle) {
+        const pulse = (this.time / 700) % 1;
+        const bxs = sx(w.battle[0]), bys = sy(w.battle[1]);
+        g.circle(bxs, bys, 6 + pulse * 22).stroke({ width: 3, color: 0xffa040, alpha: 1 - pulse });
+        g.circle(bxs, bys, 4).fill({ color: 0xffd080, alpha: 0.9 });
+      }
+    }
   }
 
   /** A rocket lifts off from a launch pad (purely visual). */
@@ -323,7 +358,8 @@ export class PixiRenderer implements WorldRenderer {
         this.labelLayer.addChild(t);
         this.townLabels.set(s.id, t);
       }
-      t.text = `${s.name} · ${s.tier} · ${s.population}`;
+      t.text = `${s.realm && s.realmId === s.id ? '👑 ' : ''}${s.name} · ${s.tier} · ${s.population}`;
+      t.style.fill = s.realm ? realmColor(s.realmId) : 0xffffff;
       (t as Text & { wx?: number; wy?: number }).wx = s.x;
       (t as Text & { wx?: number; wy?: number }).wy = s.y;
     }
@@ -442,6 +478,7 @@ export class PixiRenderer implements WorldRenderer {
       t.visible = cam.zoom < 14;
       t.position.set(((w.wx ?? 0) - cam.x) * cam.zoom + cam.width / 2, ((w.wy ?? 0) - 2 - cam.y) * cam.zoom + cam.height / 2);
     }
+    this.drawWars();
     // Firelight flickers at night.
     const dark = this.atmosphere.darkness;
     this.lightLayer.visible = dark > 0.05;
@@ -652,4 +689,14 @@ export class PixiRenderer implements WorldRenderer {
     this.seasonTemp = Math.round(seasonTempOffset(time) / 2) * 2;
     this.seasonKey = `${this.season}:${this.seasonTemp}`;
   }
+}
+
+/** A stable colour for each realm, so towns of one country share a colour on the map. */
+function realmColor(id: number): number {
+  const h = ((id * 137.508) % 360) / 360;
+  const f = (n: number) => {
+    const k = (n + h * 12) % 12;
+    return Math.round((0.72 - 0.26 * Math.max(-1, Math.min(k - 3, 9 - k, 1))) * 255);
+  };
+  return (f(0) << 16) | (f(8) << 8) | f(4);
 }

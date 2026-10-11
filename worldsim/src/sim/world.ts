@@ -116,6 +116,7 @@ export class World {
       chronicle: [],
       space: emptySpace(),
       player: emptyPlayer(),
+      wars: [],
     };
     this.log(`The world was born from seed ${seed}.`, 'world');
     installCivilization(this);

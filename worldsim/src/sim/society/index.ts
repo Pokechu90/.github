@@ -7,6 +7,7 @@ import { abstractCraft, civDaily, civJobDemand, doCivWork, techName, tryCivTask 
 import { abstractResearch, practice } from './tech';
 import { abstractTrade, doTradeWork, payWage, spendDaily, traderDemand, tryTradeTask, updatePricesDaily } from './economy';
 import { governanceDaily } from './governance';
+import { warDaily } from './war';
 import { canMigrate, exile, immigrationDaily, migrationDaily, requestMigration } from './migration';
 
 export function installCivilization(world: World): void {
@@ -36,6 +37,7 @@ export function installCivilization(world: World): void {
       }
     },
     governanceDaily,
+    warDaily,
     migrationDaily,
     immigrationDaily,
   );

@@ -4,6 +4,7 @@
  * LLM-chosen goals) to the NPC's memory, feelings and plans.
  */
 import { ITEM_BY_ID } from '../gifts';
+import { ongoingWars } from '../society/war';
 import { DISEASES, JOBS, traitWord } from '../../shared/people';
 import { daylight, formatDate, getCalendar } from '../../shared/time';
 import type { ChatResult, DecideResult, NpcPromptContext } from '../../shared/llm';
@@ -57,6 +58,12 @@ export function buildContext(world: World, n: Npc, withGoals = false): NpcPrompt
   if (nd.safety > 0.5) feelings.push('scared');
   if (nd.purpose > 0.7) feelings.push('bored and restless');
   if (n.pregnantDays >= 0) feelings.push('pregnant');
+  for (const w of ongoingWars(world)) {
+    if (w.attackerId !== n.settlementId && w.defenderId !== n.settlementId) continue;
+    const enemy = world.settlement(w.attackerId === n.settlementId ? w.defenderId : w.attackerId);
+    const ours = w.attackerId === n.settlementId ? w.score : -w.score;
+    feelings.push(`living through the ${w.name} against ${enemy?.name ?? 'the enemy'} (${ours > 0.2 ? 'we are winning' : ours < -0.2 ? 'we are losing' : 'nobody is winning'})`);
+  }
 
   const mems = allMemories(n);
   const playerMems = mems.filter((m) => m.about === -2).slice(-8).map((m) => `${formatDate(m.time)}: ${m.text}`);

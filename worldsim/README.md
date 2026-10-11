@@ -91,6 +91,7 @@ game's address. Players then enter the server address in the 🧠 settings.
 | Space · 1–5 | Pause · speeds 1×, 10×, 60×, 1 year/min, 10 years/min |
 | 💬 Talk (person panel) | Chat with them. Type anything; they answer in character |
 | 🎁 Give… / Send a gift… | Spend ✨ influence on a gift for that person or town (see below) |
+| ⚔️ Stir up trouble… (town panel) | Spread rumours, incite a war against another town (you pick the cause), arm them, or 🕊️ broker peace |
 | 📍 Follow / 🎯 Find | Camera follows a person / jumps to them |
 | Minimap (bottom left) | Click to jump, scroll to zoom |
 | 🪐 Space | Star map → solar systems → planet surfaces |
@@ -99,6 +100,7 @@ game's address. Players then enter the server address in the 🧠 settings.
 **Worlds are seeds:** `?seed=42` in the address always makes the same world.
 **Sandbox:** add `&sandbox=space` to start with every technology and a launch pad
 (or `&sandbox=modern` for the computer age), to try the late game straight away.
+`&sandbox=kingdoms` starts with six rival ancient towns and full influence, for trying out wars.
 
 ---
 
@@ -156,6 +158,30 @@ them faster, radios and phones keep loneliness away, spacesuits put them first i
 for crewed missions. People remember who gave them what (and mention it when you talk
 to them), treasure their belongings and leave them to their children as heirlooms.
 A town that receives five gifts comes to *revere the Stranger*.
+
+**Wars and realms.** Towns that come to dislike each other (crowded borders, different
+cultures, old grudges) go to war when they have a reason:
+- **resources**: a hungry or poor town covets a neighbour's grain, timber, stone or iron;
+- **territory**: two crowded towns fight over the land between them;
+- **revenge** for a lost war, **faith** between very different cultures, **conquest** by a
+  much stronger town with a ruthless leader, and **independence** when a vassal rebels.
+
+A war is a series of battles every few days. Strength comes from the number of fighters,
+their era (bronze spears → muskets → tanks → drones), weapons, and the rest of their realm.
+People die, are mourned and remembered; the front moves on the map (red line, ⚔ marker,
+battle flashes). Wars end in victory, exhaustion or peace talks, with terms that fit the
+cause: plunder and tribute, fields changing hands, reparations, adopting the winner's ways,
+or **annexation**: the loser becomes a vassal in the winner's realm
+(chiefdom → kingdom → empire, or nation → federation in the modern age). Realms share a
+colour on the map, fight together, pay tribute, share knowledge, and may rebel later.
+Wars are named by the chronicle: *the Feud of A and B*, *the Iron War*, *the Second Border
+War*, *the Westvale War of Independence*, *the First World War*.
+
+**You can start them.** In a town's panel, ⚔️ *Stir up trouble…* lets you spread rumours
+about another town (✨5), incite a war against it with the cause of your choice (✨10–25,
+cheaper the more they already hate each other), arm the town with its era's weapons
+(✨12), or broker peace (✨15). Beware: word sometimes gets out that the Stranger started
+the war, and people remember.
 
 **Space.** Astronomy charts the planets; rockets send probes, then crews, then
 interstellar probes and colony ships. Stars and planets are generated from the seed

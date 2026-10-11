@@ -7,7 +7,7 @@
  */
 import { BIOMES, type Biome } from '../shared/terrain';
 import { MINUTES_PER_YEAR, formatClock, formatDate } from '../shared/time';
-import type { GiftOption, SelectTarget, SelectedInfo, Snapshot, WeatherView, WorldEvent } from '../shared/protocol';
+import type { GiftOption, SelectTarget, SelectedInfo, Snapshot, WarInfo, WeatherView, WorldEvent } from '../shared/protocol';
 import type { TileInfo } from '../render/renderer';
 
 export const SPEEDS = [
@@ -26,13 +26,14 @@ export interface HudCallbacks {
   onFollow(id: number | null): void;
   onTalk(id: number): void;
   onGift(gift: string, target: SelectTarget): void;
+  onScheme(action: 'rumours' | 'incite' | 'arm' | 'peace', a: number, b: number, cause: string): void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const EVENT_ICONS: Record<string, string> = {
   birth: '👶', death: '🕯️', social: '💞', build: '🏠', disease: '🦠', settlement: '🏕️', world: '🌍',
-  nature: '🦌', tech: '💡', economy: '💰', conflict: '⚔️', migration: '🧭', space: '🚀', law: '📜', gift: '🎁',
+  nature: '🦌', tech: '💡', economy: '💰', conflict: '⚔️', migration: '🧭', space: '🚀', law: '📜', gift: '🎁', battle: '🗡️',
 };
 
 export class Hud {
@@ -47,6 +48,9 @@ export class Hud {
   private historyFilter = 'all';
   /** Whether the gift list is open in the Inspect tab. */
   private giftsOpen = false;
+  /** Whether the "stir up trouble" tools are open, and the cause picked for an incited war. */
+  private warOpen = false;
+  private warCause = 'auto';
   /** Mouse button held down inside the panel: don't redraw under the cursor or the click is lost. */
   private pressing = false;
   /** Extra buttons in the top bar (save, settings, star map...) */
@@ -101,6 +105,14 @@ export class Hud {
       } else if (action === 'gifts') {
         this.giftsOpen = !this.giftsOpen;
         this.redraw();
+      } else if (action === 'war-tools') {
+        this.warOpen = !this.warOpen;
+        this.redraw();
+      } else if (action === 'war-cause') {
+        this.warCause = el.dataset.cause!;
+        this.redraw();
+      } else if (action === 'scheme' && !(el as HTMLButtonElement).disabled) {
+        cb.onScheme(el.dataset.scheme as 'rumours' | 'incite' | 'arm' | 'peace', id, Number(el.dataset.b ?? -1), this.warCause);
       } else if (action === 'gift' && !(el as HTMLButtonElement).disabled) {
         const kind = el.dataset.target === 'settlement' ? 'settlement' : 'npc';
         cb.onGift(el.dataset.gift!, { kind, id });
@@ -267,6 +279,7 @@ export class Hud {
       <p class="muted">${esc(t.subtitle)}</p>
       <div class="buttons"><button data-action="gifts" class="${this.giftsOpen ? 'active' : ''}">🎁 Send a gift…</button></div>
       ${this.giftsHtml(t.gifts, 'settlement', t.id, "the town's")}
+      ${this.politicsHtml(t)}
       <p>Leader: ${t.leader ? `<a data-npc="${t.leader.id}">${esc(t.leader.name)}</a>` : '<span class="muted">none</span>'}</p>
       <p>Culture: ${esc(t.culture)}</p>
       <h4>Laws</h4>${t.laws.length ? `<ul>${t.laws.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '<p class="muted">No written laws.</p>'}
@@ -275,6 +288,41 @@ export class Hud {
       <table class="stock">${t.stock.map((r) => `<tr><td>${esc(r.name)}</td><td>${r.amount}</td>${r.price !== null ? `<td class="muted">${r.price.toFixed(1)}c</td>` : ''}</tr>`).join('')}</table>
       <h4>Buildings</h4><p>${t.buildings.join(', ')}</p>
       ${t.neighbours.length ? `<h4>Neighbours</h4><ul class="links">${t.neighbours.map((n) => `<li><a data-town="${n.id}">${esc(n.name)}</a> <span class="tag ${n.relation === 'hostile' || n.relation === 'tense' ? 'bad' : 'good'}">${n.relation}</span></li>`).join('')}</ul>` : ''}`;
+  }
+
+  /** Realm, wars, and the player's tools for stirring up (or calming) conflict. */
+  private politicsHtml(t: Extract<SelectedInfo, { kind: 'settlement' }>): string {
+    const influence = this.lastSnap?.stats.influence ?? 0;
+    const realm = t.realm
+      ? `<p class="realm">👑 ${t.realm.vassal ? `Part of the <a data-town="${t.realm.rootId}">${esc(t.realm.name)}</a>` : `Rules the <b>${esc(t.realm.name)}</b>`} · ${t.realm.members} towns</p>`
+      : '';
+    const war = (w: WarInfo) => {
+      const pct = Math.round((w.score + 1) * 50);
+      return `<li class="war ${w.ongoing ? 'on' : ''}">
+        <div><b>${esc(w.name)}</b> vs <a data-town="${w.enemyId}">${esc(w.enemy)}</a>${w.instigated ? ' <span class="tag bad">your doing</span>' : ''}</div>
+        <div class="muted">${esc(w.cause)} · since ${esc(w.since)} · ${w.battles} battles · dead: ${w.ourDeaths} ours, ${w.theirDeaths} theirs</div>
+        ${w.ongoing ? `<div class="front" title="Who is winning"><i style="width:${pct}%"></i><span>${w.score > 0.15 ? 'winning' : w.score < -0.15 ? 'losing' : 'even'}</span></div>` : `<div class="muted">${esc(w.outcome)}</div>`}
+      </li>`;
+    };
+    const onWars = t.wars.filter((w) => w.ongoing);
+    const wars = t.wars.length
+      ? `<h4>${onWars.length ? '⚔️ At war' : 'Past wars'}</h4><ul class="wars">${t.wars.map(war).join('')}</ul>
+         ${onWars.length ? `<div class="buttons"><button data-action="scheme" data-scheme="peace" data-id="${t.id}" ${influence < t.schemeCosts.peace ? 'disabled' : ''}>🕊️ Broker peace ✨${t.schemeCosts.peace}</button></div>` : ''}`
+      : '';
+    const tools = this.warOpen ? `<div class="schemes">
+        <p class="muted">Turn ${esc(t.title)} against another town. Rumours sour relations; inciting starts a war at once (cheaper if they already hate each other). Word may get out that it was you.</p>
+        <div class="chips"><span class="muted">Cause:</span>${[['auto', 'Their best reason'], ['resources', 'Resources'], ['territory', 'Territory'], ['revenge', 'Revenge'], ['faith', 'Faith'], ['conquest', 'Conquest']]
+          .map(([id, label]) => `<button data-action="war-cause" data-cause="${id}" class="${this.warCause === id ? 'active' : ''}">${label}</button>`).join('')}</div>
+        <table class="rivals">${t.rivals.map((r) => `<tr>
+          <td><a data-town="${r.id}">${esc(r.name)}</a><br><span class="muted">${r.distance} tiles · </span><span class="tag ${r.relation === 'hostile' || r.relation === 'tense' ? 'bad' : 'good'}">${r.atWar ? 'at war' : r.relation}</span></td>
+          <td><button data-action="scheme" data-scheme="rumours" data-id="${t.id}" data-b="${r.id}" title="Spread rumours in ${esc(t.title)} about ${esc(r.name)}" ${influence < t.schemeCosts.rumours ? 'disabled' : ''}>🗣️ ✨${t.schemeCosts.rumours}</button></td>
+          <td><button data-action="scheme" data-scheme="incite" data-id="${t.id}" data-b="${r.id}" title="${esc(r.blocked ?? `Start a war against ${r.name}`)}" ${r.blocked || influence < r.warCost ? 'disabled' : ''}>⚔️ ✨${r.warCost}</button></td>
+        </tr>`).join('') || '<tr><td class="muted">There are no other towns yet.</td></tr>'}</table>
+        <div class="buttons"><button data-action="scheme" data-scheme="arm" data-id="${t.id}" ${influence < t.schemeCosts.arm ? 'disabled' : ''} title="Fighters are 60% stronger for two years">🗡️ Arm them with ${esc(t.weapons)} ✨${t.schemeCosts.arm}</button></div>
+      </div>` : '';
+    return `${realm}${t.tribute ? `<p class="muted">💰 ${esc(t.tribute)}</p>` : ''}${t.armedDays ? `<p class="muted">🗡️ Armed with ${esc(t.weapons)} (${Math.ceil(t.armedDays / 12) / 10} more years)</p>` : ''}
+      ${wars}
+      <div class="buttons"><button data-action="war-tools" class="${this.warOpen ? 'active' : ''}">⚔️ Stir up trouble…</button></div>${tools}`;
   }
 
   /** The gift list: this era's gifts, plus a peek at the next era's (locked). */
@@ -340,11 +388,13 @@ export class Hud {
   private renderHistory(events: WorldEvent[]): void {
     const filters: [string, string, string[]][] = [
       ['all', 'All', []], ['people', 'People', ['birth', 'death', 'social']], ['society', 'Society', ['settlement', 'migration', 'law', 'build', 'economy']],
-      ['tech', 'Discoveries', ['tech', 'space']], ['conflict', 'Conflict', ['conflict']], ['disease', 'Disease', ['disease']], ['gift', 'Gifts', ['gift']],
+      ['tech', 'Discoveries', ['tech', 'space']], ['conflict', 'Wars', ['conflict', 'battle']], ['disease', 'Disease', ['disease']], ['gift', 'Gifts', ['gift']],
     ];
     const kinds = filters.find((f) => f[0] === this.historyFilter)?.[2] ?? [];
     const match = (e: WorldEvent) => !kinds.length || kinds.includes(e.kind);
-    const line = (e: WorldEvent) => `<li><span>${formatDate(e.time)}</span>${EVENT_ICONS[e.kind] ?? '•'} ${e.about >= 0 ? `<a data-npc="${e.about}">${esc(e.text)}</a>` : esc(e.text)}</li>`;
+    // Skip the kind's icon when the text already starts with its own emoji.
+    const icon = (e: WorldEvent) => (/^\p{Extended_Pictographic}/u.test(e.text) ? '' : `${EVENT_ICONS[e.kind] ?? '•'} `);
+    const line = (e: WorldEvent) => `<li><span>${formatDate(e.time)}</span>${icon(e)}${e.about >= 0 ? `<a data-npc="${e.about}">${esc(e.text)}</a>` : esc(e.text)}</li>`;
     // The chronicle (important events) grouped by year, newest first; then recent news.
     const byYear = new Map<number, WorldEvent[]>();
     for (const e of this.chronicle.filter(match)) {

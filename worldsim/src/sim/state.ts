@@ -11,6 +11,7 @@ import type { WorldEvent } from '../shared/protocol';
 import type { PlantStage } from '../shared/species';
 import type { SpaceState } from './space/program';
 import type { PlayerState } from './gifts';
+import type { War } from './society/war';
 
 export interface Plant {
   id: number;
@@ -264,6 +265,12 @@ export interface Settlement {
   raids: number;
   /** How many gifts the player has sent here. */
   giftsReceived?: number;
+  /** The settlement this one is a vassal of (-1 or missing = independent). */
+  overlordId?: number;
+  /** Day until which its fighters carry weapons sent by the player. */
+  armedUntil?: number;
+  /** Tribute owed after losing a war: a share of goods paid daily. */
+  tribute?: { toId: number; until: number; rate: number };
 }
 
 export interface WorldState {
@@ -298,4 +305,6 @@ export interface WorldState {
   space: SpaceState;
   /** The player's influence, spent on gifts. */
   player: PlayerState;
+  /** Wars, ongoing and past. */
+  wars: War[];
 }

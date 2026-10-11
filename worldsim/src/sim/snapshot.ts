@@ -6,6 +6,7 @@
  * change, and animals (which move) every snapshot.
  */
 import { MAX_INFLUENCE } from './gifts';
+import { ongoingWars, realmName, realmRoot } from './society/war';
 import { CHUNK_SIZE, chunkKey } from '../shared/terrain';
 import { ANIMALS, PLANTS, PLANT_STAGE_NAMES } from '../shared/species';
 import { DAYS_PER_YEAR } from '../shared/time';
@@ -196,9 +197,21 @@ export class ViewTracker {
         .map((b) => ({ id: b.id, kind: b.kind, x: b.x, y: b.y, progress: b.progress, crop: b.crop, settlementId: b.settlementId }));
     }
 
-    const settlements = world.state.settlements
-      .filter((st) => !st.abandoned)
-      .map((st) => ({ id: st.id, name: st.name, x: st.x, y: st.y, tier: st.tier, population: world.residentsOf(st.id).length + Math.round(st.abstractPop) }));
+    const liveTowns = world.state.settlements.filter((st) => !st.abandoned);
+    const roots = liveTowns.map((st) => realmRoot(world, st));
+    const realmSize = new Map<number, number>();
+    for (const r of roots) realmSize.set(r.id, (realmSize.get(r.id) ?? 0) + 1);
+    const settlements = liveTowns.map((st, i) => {
+      const root = roots[i];
+      return { id: st.id, name: st.name, x: st.x, y: st.y, tier: st.tier, population: world.residentsOf(st.id).length + Math.round(st.abstractPop), realmId: root.id, realm: realmName(world, root, realmSize.get(root.id)) };
+    });
+    const day = Math.floor(world.state.time / 1440);
+    const wars = ongoingWars(world).map((w) => {
+      const a = world.settlement(w.attackerId)!;
+      const b = world.settlement(w.defenderId)!;
+      const recent = w.lastBattle && day - w.lastBattle[2] <= 2;
+      return { id: w.id, name: w.name, ax: a.x, ay: a.y, bx: b.x, by: b.y, score: w.score, battle: recent ? [w.lastBattle![0], w.lastBattle![1]] as [number, number] : null };
+    });
 
     // People list for the nearest settlement, about once a second.
     let people: Snapshot['people'] = null;
@@ -234,6 +247,7 @@ export class ViewTracker {
       settlements,
       people,
       launches: world.state.space.recentLaunches.map(([x, y]) => [x, y] as [number, number]),
+      wars,
       selected: this.describeSelected(world),
       stats: {
         population: census.population,

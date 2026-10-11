@@ -20,6 +20,7 @@ import { population } from './society/work';
 import { ageYears, clamp01, fullName, isAdult } from './npc/people';
 import { remember } from './npc/memory';
 import { makeAnimal } from './ecology/animals';
+import { endWar, ongoingWars } from './society/war';
 import { starsNear, planetsOf } from '../shared/galaxy';
 
 export const MAX_INFLUENCE = 100;
@@ -263,9 +264,10 @@ const GIFTS: GiftDef[] = [
   },
   {
     id: 'peace', icon: '🕊️', name: 'Peace', target: 'town', era: 2, cost: 12,
-    description: 'Old grudges fade: friendly relations with every other town.',
+    description: 'Ends their wars and old grudges fade: friendly relations with every other town.',
     blocked: (world, s) => (world.state.settlements.some((o) => o !== s && !o.abandoned) ? null : 'There are no other towns.'),
     apply(world, s) {
+      for (const w of ongoingWars(world)) if (w.attackerId === s.id || w.defenderId === s.id) endWar(world, w, null, 'The Stranger brought peace.', false);
       for (const o of world.state.settlements) {
         if (o === s || o.abandoned) continue;
         s.diplomacy[o.id] = Math.max(0.6, s.diplomacy[o.id] ?? 0);
@@ -547,7 +549,7 @@ export function giveGift(world: World, giftId: string, target: SelectTarget): { 
   p.giftsGiven++;
   if (r.n) r.n.playerAffinity = Math.min(1, r.n.playerAffinity + 0.25);
   if (r.n) r.n.playerFamiliarity = Math.min(1, r.n.playerFamiliarity + 0.1);
-  world.log(`🎁 ${text}`, 'gift', r.n?.id ?? -1);
+  world.log(text, 'gift', r.n?.id ?? -1);
   // Towns that receive many gifts start to revere the giver.
   r.s.giftsReceived = (r.s.giftsReceived ?? 0) + 1;
   if (r.s.giftsReceived === 5 && !r.s.culture.traits.includes('reveres the Stranger')) {

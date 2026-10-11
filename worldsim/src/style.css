@@ -159,3 +159,19 @@ table.stock { width: 100%; border-collapse: collapse; } table.stock td:nth-child
 .gift:not(.off):hover { border-color: var(--accent); }
 ul.items { padding-left: 0; list-style: none; margin: 4px 0; }
 ul.items li { margin: 2px 0; }
+
+/* Wars and realms */
+.realm { color: var(--accent); }
+ul.wars { list-style: none; padding: 0; margin: 4px 0; display: flex; flex-direction: column; gap: 6px; }
+li.war { border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; font-size: 12px; }
+li.war.on { border-color: #e5484d88; background: #e5484d12; }
+li.war .muted { font-size: 11px; }
+.front { position: relative; height: 14px; background: #4a2326; border-radius: 7px; overflow: hidden; margin-top: 4px; }
+.front i { position: absolute; inset: 0 auto 0 0; background: #46a758; }
+.front span { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 14px; color: #fff; text-shadow: 0 1px 2px #000; }
+.schemes { border: 1px solid #e5484d55; background: #e5484d0d; border-radius: 10px; padding: 6px 8px 8px; margin: 4px 0 8px; }
+.schemes > p { margin: 2px 0 4px; font-size: 11px; }
+table.rivals { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.rivals td { padding: 3px 2px; vertical-align: middle; }
+table.rivals td:not(:first-child) { width: 1%; white-space: nowrap; }
+table.rivals button { padding: 2px 6px; font-size: 11px; }

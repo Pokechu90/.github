@@ -45,6 +45,7 @@ async function main(): Promise<void> {
     onFollow: (id) => (renderer.follow = id),
     onTalk: (id) => void chat.open(id),
     onGift: (gift, target) => sim.send({ type: 'gift', gift, target }),
+    onScheme: (action, a, b, cause) => sim.send({ type: 'scheme', action, a, b, cause }),
   });
   const minimap = new Minimap(renderer.camera);
   sim.on('overview', ({ chunks, reset }) => {

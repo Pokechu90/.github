@@ -156,6 +156,9 @@ when the log fills up.
 7. ✅ **Gifts.** Player influence, era-dependent gifts for towns and people, personal
    items with real effects, heirlooms. (`sim/gifts.ts`)
 
+8. ✅ **Wars and realms.** Causes, battles, peace terms, vassals and rebellions; the
+   player can spread rumours, incite wars, arm towns and broker peace. (`sim/society/war.ts`)
+
 ### Where things live
 
 ```
@@ -163,7 +166,7 @@ src/sim/npc/       people: brain.ts (decisions), actions.ts (doing), path.ts (A*
                    social.ts, life.ts (births, jobs), health.ts (disease), memory.ts,
                    context.ts (LLM bridge), describe.ts (UI profiles)
 src/sim/society/   settlement.ts, work.ts (farming, crafting, planning, tiers),
-                   tech.ts, economy.ts, governance.ts, migration.ts
+                   tech.ts, economy.ts, governance.ts, migration.ts, war.ts
 src/sim/space/     program.ts (missions, colonies)
 src/sim/tiers.ts   level-of-detail simulation
 src/sim/gifts.ts   the player's influence, gifts and belongings

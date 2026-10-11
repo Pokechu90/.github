@@ -15,6 +15,7 @@ import { updateTiers } from './tiers';
 import { spaceView } from './space/program';
 import { applySandbox } from './sandbox';
 import { gainInfluence, giveGift } from './gifts';
+import { scheme } from './society/war';
 import { MINUTES_PER_YEAR, getCalendar } from '../shared/time';
 
 const LOOP_MS = 50;
@@ -112,6 +113,12 @@ ctx.onmessage = (e) => {
       if (!world) break;
       const r = giveGift(world, msg.gift, msg.target);
       ctx.postMessage({ type: 'giftResult', ...r });
+      lastSnapshot = 0;
+      break;
+    }
+    case 'scheme': {
+      if (!world) break;
+      ctx.postMessage({ type: 'giftResult', ...scheme(world, msg.action, msg.a, msg.b, msg.cause) });
       lastSnapshot = 0;
       break;
     }

@@ -39,6 +39,8 @@ export type ToSim =
   | { type: 'spaceState'; requestId: number }
   /** Give a gift (see sim/gifts.ts) to a town or a person. */
   | { type: 'gift'; gift: string; target: SelectTarget }
+  /** Meddle in politics (see sim/society/war.ts): town `a` (and target town `b`). */
+  | { type: 'scheme'; action: 'rumours' | 'incite' | 'arm' | 'peace'; a: number; b: number; cause: string }
 
 // ---------- Simulation -> Page ----------
 
@@ -165,6 +167,40 @@ export interface SettlementView {
   y: number;
   tier: string;
   population: number;
+  /** Realm this town belongs to (root town id), and the realm's name if it has several towns. */
+  realmId: number;
+  realm: string | null;
+}
+
+/** An ongoing war, for drawing the front on the map. */
+export interface WarMapView {
+  id: number;
+  name: string;
+  ax: number;
+  ay: number;
+  bx: number;
+  by: number;
+  /** -1..1, positive = attacker (a) winning. */
+  score: number;
+  /** Where the last battle was, if it happened in the last two days. */
+  battle: [number, number] | null;
+}
+
+export interface WarInfo {
+  id: number;
+  name: string;
+  enemy: string;
+  enemyId: number;
+  cause: string;
+  since: string;
+  /** -1..1 from this town's point of view. */
+  score: number;
+  battles: number;
+  ourDeaths: number;
+  theirDeaths: number;
+  instigated: boolean;
+  ongoing: boolean;
+  outcome: string;
 }
 
 export interface PersonSummary {
@@ -260,6 +296,14 @@ export type SelectedInfo =
       neighbours: { name: string; id: number; relation: string }[];
       era: string;
       gifts: GiftOption[];
+      realm: { name: string; rootId: number; rootName: string; members: number; vassal: boolean } | null;
+      wars: WarInfo[];
+      /** Other towns the player could turn this one against. */
+      rivals: { id: number; name: string; relation: string; distance: number; blocked: string | null; warCost: number; atWar: boolean }[];
+      weapons: string;
+      armedDays: number;
+      tribute: string | null;
+      schemeCosts: { rumours: number; arm: number; peace: number };
     }
   | { kind: 'gone'; text: string };
 
@@ -311,6 +355,7 @@ export interface Snapshot {
   settlements: SettlementView[];
   /** Rockets launched in the last day (x, y), for the launch animation. */
   launches: [number, number][];
+  wars: WarMapView[];
   /** Everyone in the settlement nearest the camera (sent about once a second). */
   people: PersonSummary[] | null;
   selected: SelectedInfo | null;

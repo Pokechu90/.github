@@ -84,6 +84,7 @@ export function deserialize(json: string): World {
   world.state.chronicle ??= [];
   world.state.space ??= emptySpace();
   world.state.player ??= emptyPlayer();
+  world.state.wars ??= [];
   for (const n of world.state.npcs) {
     n.chatLog ??= [];
     n.wealth ??= 0;

@@ -97,9 +97,22 @@ function updateCulture(world: World, s: Settlement): void {
   if (avg((n) => n.values.wealth) > 0.58) traits.push('mercantile');
   if (people.filter((n) => n.job === 'fisher').length > people.length * 0.25) traits.push('seafaring');
   if (people.filter((n) => n.job === 'farmer').length > people.length * 0.3) traits.push('farming');
-  if (s.raids >= 2) traits.push('warlike');
-  s.culture.traits = traits.slice(0, 4);
+  const warsWon = world.state.wars.filter((w) => w.winnerId === s.id).length;
+  if (s.raids >= 2 || warsWon >= 2) traits.push('warlike');
+  // Traits that come from history (reverence, ways imposed after a war) are kept.
+  const kept = s.culture.traits.filter((t) => !COMPUTED_TRAITS.includes(t) && !traits.includes(t));
+  s.culture.traits = [...traits.slice(0, 4), ...kept.slice(0, 2)];
+  // Daughter towns slowly grow a culture of their own.
+  const parent = world.settlement(s.parentId);
+  const ageYears = (world.state.time / 1440 - s.foundedDay) / 120;
+  if (parent && parent.culture.name === s.culture.name && ageYears > 12 && world.rand() < 0.12) {
+    const old = s.culture.name;
+    s.culture.name = `${s.name}folk`;
+    world.log(`The people of ${s.name} no longer see themselves as ${old}: they are the ${s.culture.name} now.`, 'settlement', -1);
+  }
 }
+
+const COMPUTED_TRAITS = ['hospitable', 'industrious', 'festive', 'inventive', 'stoic', 'devout', 'freedom-loving', 'mercantile', 'seafaring', 'farming', 'warlike'];
 
 function crime(world: World, s: Settlement): void {
   const people = world.residentsOf(s.id);
@@ -145,7 +158,9 @@ function diplomacyAndRaids(world: World): void {
       if (d > 300) continue;
       // Neighbours compete for land and game; different cultures distrust each other.
       const shared = a.culture.traits.filter((t) => b.culture.traits.includes(t)).length;
-      const drift = (d < 120 ? -0.0025 : 0) + (shared - 1) * 0.0008 + (a.culture.name === b.culture.name ? 0.001 : -0.0005);
+      // Crowded neighbours get on each other's nerves more.
+      const crowd = 1 + Math.min(3, (population(world, a) + population(world, b)) / 120);
+      const drift = (d < 120 ? -0.0025 * crowd : 0) + (shared - 1) * 0.0008 + (a.culture.name === b.culture.name ? 0.001 : -0.0008);
       for (const [x, y] of [[a, b], [b, a]] as const) {
         const cur = x.diplomacy[y.id] ?? 0;
         x.diplomacy[y.id] = Math.max(-1, Math.min(1, cur + drift - cur * 0.002));
@@ -156,6 +171,8 @@ function diplomacyAndRaids(world: World): void {
   for (const a of live) {
     const leader = world.npcById(a.leaderId);
     if (!leader || leader.traits.agreeableness > 0.4 || day - a.lastRaidDay < 90) continue;
+    // Towns at war fight battles instead (see war.ts).
+    if (world.state.wars.some((w) => w.endDay < 0 && (w.attackerId === a.id || w.defenderId === a.id))) continue;
     const pop = population(world, a);
     const needy = totalFood(a) / Math.max(1, pop) < 3 || leader.values.wealth > 0.65;
     if (!needy) continue;
@@ -167,7 +184,7 @@ function diplomacyAndRaids(world: World): void {
   }
 }
 
-function strength(world: World, s: Settlement): number {
+export function strength(world: World, s: Settlement): number {
   const fighters = world.residentsOf(s.id).filter((n) => isAdult(n) && ageYears(n) < 55 && !n.illness);
   let v = fighters.reduce((sum, n) => sum + 0.5 + n.skills.hunting, 0) + s.abstractPop * 0.4;
   if (hasTech(s, 'metalwork')) v *= 1.5;
@@ -207,8 +224,8 @@ function raid(world: World, a: Settlement, b: Settlement, leader: Npc): void {
   casualties(a, deathsA);
   world.log(
     win
-      ? `⚔️ ${a.name}, led by ${fullName(leader)}, raided ${b.name} and carried off food and goods${deathsB ? ` (${deathsB} killed)` : ''}.`
-      : `⚔️ ${a.name} raided ${b.name} but was driven off${deathsA ? ` (${deathsA} raiders died)` : ''}.`,
+      ? `${a.name}, led by ${fullName(leader)}, raided ${b.name} and carried off food and goods${deathsB ? ` (${deathsB} killed)` : ''}.`
+      : `${a.name} raided ${b.name} but was driven off${deathsA ? ` (${deathsA} raiders died)` : ''}.`,
     'conflict', leader.id,
   );
   for (const n of world.residentsOf(b.id)) {
